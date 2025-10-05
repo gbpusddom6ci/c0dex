@@ -1,2 +1,0 @@
-[ ]  OC
-Sayı dizisindeki alakalı mumun open ve close değerinin farkı, yani bir nevi o mumun kaç pips olduğu. Bu değeri tablodaki alakalı kısımda belirt. saatlerin yanına ekleyebilirsin tabloda. Bütün app' lere matrix dahil olmak üzere ekle.
