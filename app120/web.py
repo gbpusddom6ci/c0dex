@@ -17,6 +17,7 @@ from .counter import (
     compute_dc_flags,
     compute_offset_alignment,
     predict_time_after_n_steps,
+    detect_iov_candles,
 )
 from .main import (
     Candle as ConverterCandle,
@@ -116,6 +117,7 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
       <a href='/' class='{ 'active' if active_tab=="analyze" else '' }'>Analiz</a>
       <a href='/dc' class='{ 'active' if active_tab=="dc" else '' }'>DC List</a>
       <a href='/matrix' class='{ 'active' if active_tab=="matrix" else '' }'>Matrix</a>
+      <a href='/iov' class='{ 'active' if active_tab=="iov" else '' }'>IOV Tarama</a>
       <a href='/converter' class='{ 'active' if active_tab=="converter" else '' }'>60→120 Converter</a>
     </nav>
     {body}
@@ -246,6 +248,48 @@ def render_matrix_index() -> bytes:
     return page("app120 - Matrix", body, active_tab="matrix")
 
 
+def render_iov_index() -> bytes:
+    body = """
+    <div class='card'>
+      <form method='post' action='/iov' enctype='multipart/form-data'>
+        <div class='row'>
+          <div>
+            <label>CSV</label>
+            <input type='file' name='csv' accept='.csv,text/csv' required />
+          </div>
+          <div>
+            <label>Zaman Dilimi</label>
+            <div>120m</div>
+          </div>
+          <div>
+            <label>Girdi TZ</label>
+            <select name='input_tz'>
+              <option value='UTC-5' selected>UTC-5</option>
+              <option value='UTC-4'>UTC-4</option>
+            </select>
+          </div>
+          <div>
+            <label>Dizi</label>
+            <select name='sequence'>
+              <option value='S1'>S1</option>
+              <option value='S2' selected>S2</option>
+            </select>
+          </div>
+          <div>
+            <label>Limit (|OC|, |PrevOC|)</label>
+            <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
+          </div>
+        </div>
+        <div style='margin-top:12px;'>
+          <button type='submit'>IOV Tara</button>
+        </div>
+      </form>
+    </div>
+    <p>Limit, mumun OC ve PrevOC değerlerinin mutlak değeri için eşik belirler. Değeri aşan ve zıt işaretli çiftler IOV olarak raporlanır.</p>
+    """
+    return page("app120 - IOV", body, active_tab="iov")
+
+
 def render_converter_index() -> bytes:
     body = """
     <div class='card'>
@@ -303,6 +347,8 @@ class App120Handler(BaseHTTPRequestHandler):
             body = render_dc_index()
         elif self.path == "/matrix":
             body = render_matrix_index()
+        elif self.path == "/iov":
+            body = render_iov_index()
         elif self.path == "/converter":
             body = render_converter_index()
         else:
@@ -365,7 +411,7 @@ class App120Handler(BaseHTTPRequestHandler):
             if not candles:
                 raise ValueError("Veri boş veya çözümlenemedi")
 
-            sequence = (form.get("sequence", {}).get("value") or "S2").strip() if self.path in ("/analyze", "/matrix") else "S2"
+            sequence = (form.get("sequence", {}).get("value") or "S2").strip() if self.path in ("/analyze", "/matrix", "/iov") else "S2"
             offset_s = (form.get("offset", {}).get("value") or "0").strip() if self.path == "/analyze" else "0"
             show_dc = ("show_dc" in form) if self.path == "/analyze" else False
             tz_label_sel = (form.get("input_tz", {}).get("value") or "UTC-5").strip()
@@ -376,6 +422,78 @@ class App120Handler(BaseHTTPRequestHandler):
                 delta = timedelta(hours=1)
                 candles = [CounterCandle(ts=c.ts + delta, open=c.open, high=c.high, low=c.low, close=c.close) for c in candles]
                 tz_label = "UTC-5 -> UTC-4 (+1h)"
+
+            if self.path == "/iov":
+                limit_raw = (form.get("limit", {}).get("value") or "0").strip()
+                try:
+                    limit_val = float(limit_raw)
+                except Exception:
+                    limit_val = 0.0
+                report = detect_iov_candles(candles, sequence, limit_val)
+                offset_statuses = []
+                offset_counts = []
+                total_hits = 0
+                for item in report.offsets:
+                    off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
+                    status = item.offset_status or "-"
+                    status_label = f"{off_label}: {status}"
+                    if item.missing_steps:
+                        status_label += f" (missing {item.missing_steps})"
+                    offset_statuses.append(status_label)
+                    offset_counts.append(f"{off_label}: {len(item.hits)}")
+                    total_hits += len(item.hits)
+
+                rows_html = []
+                for item in report.offsets:
+                    if not item.hits:
+                        continue
+                    off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
+                    for hit in item.hits:
+                        ts_s = hit.ts.strftime('%Y-%m-%d %H:%M:%S')
+                        oc_label = format_pip(hit.oc)
+                        prev_label = format_pip(hit.prev_oc)
+                        dc_info = "True" if hit.dc_flag else "False"
+                        if hit.used_dc:
+                            dc_info += " (rule)"
+                        rows_html.append(
+                            f"<tr>"
+                            f"<td>{off_label}</td>"
+                            f"<td>{hit.seq_value}</td>"
+                            f"<td>{hit.idx}</td>"
+                            f"<td>{html.escape(ts_s)}</td>"
+                            f"<td>{html.escape(oc_label)}</td>"
+                            f"<td>{html.escape(prev_label)}</td>"
+                            f"<td>{dc_info}</td>"
+                            f"</tr>"
+                        )
+
+                info = (
+                    f"<div class='card'>"
+                    f"<div><strong>Data:</strong> {len(candles)} candles</div>"
+                    f"<div><strong>Zaman Dilimi:</strong> 120m</div>"
+                    f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
+                    f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
+                    f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
+                    f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
+                    f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
+                    f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses))}</div>"
+                    f"<div><strong>Offset IOV sayıları:</strong> {html.escape(', '.join(offset_counts))}</div>"
+                    f"<div><strong>Toplam IOV:</strong> {total_hits}</div>"
+                    f"</div>"
+                )
+
+                if rows_html:
+                    header = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>"
+                    table = header + "".join(rows_html) + "</tbody></table>"
+                else:
+                    table = "<p>IOV mum bulunamadı.</p>"
+
+                body = info + table
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(page("app120 IOV", body, active_tab="iov"))
+                return
 
             if self.path == "/analyze":
                 try:

@@ -183,6 +183,37 @@ class SequenceAllocation:
     used_dc: bool
 
 
+@dataclass
+class IOVHit:
+    seq_value: int
+    idx: int
+    ts: datetime
+    oc: float
+    prev_oc: float
+    used_dc: bool
+    dc_flag: bool
+
+
+@dataclass
+class IOVOffsetResult:
+    offset: int
+    offset_status: str
+    target_ts: Optional[datetime]
+    actual_ts: Optional[datetime]
+    missing_steps: int
+    hits: List[IOVHit]
+
+
+@dataclass
+class IOVReport:
+    sequence: str
+    limit: float
+    base_idx: int
+    base_status: str
+    base_ts: Optional[datetime]
+    offsets: List[IOVOffsetResult]
+
+
 def compute_sequence_allocations(
     candles: List[Candle],
     dc_flags: List[Optional[bool]],
@@ -368,6 +399,76 @@ def compute_offset_alignment(
         start_ref_ts=start_ref_ts,
         missing_steps=0,
         hits=hits,
+    )
+
+
+def detect_iov_candles(
+    candles: List[Candle],
+    sequence: str,
+    limit: float,
+) -> IOVReport:
+    if not candles:
+        raise ValueError("IOV analizi için mum verisi gerekli")
+
+    seq_key = (sequence or "S2").upper()
+    if seq_key not in SEQUENCES:
+        seq_key = "S2"
+    seq_values = SEQUENCES[seq_key][:]
+    skip_values = {1, 3} if seq_key == "S1" else {1, 5}
+    threshold = abs(limit)
+
+    base_idx, base_status = find_start_index(candles, DEFAULT_START_TOD)
+    base_ts = candles[base_idx].ts if 0 <= base_idx < len(candles) else None
+    dc_flags = compute_dc_flags(candles)
+
+    offsets: List[IOVOffsetResult] = []
+    for offset in range(-3, 4):
+        alignment = compute_offset_alignment(candles, dc_flags, base_idx, seq_values, offset)
+        hits: List[IOVHit] = []
+        for seq_val, alloc in zip(seq_values, alignment.hits):
+            if seq_val in skip_values:
+                continue
+            idx = alloc.idx
+            if idx is None or not (0 <= idx < len(candles)):
+                continue
+            if idx - 1 < 0:
+                continue
+            oc = candles[idx].close - candles[idx].open
+            prev_oc = candles[idx - 1].close - candles[idx - 1].open
+            if abs(oc) < threshold or abs(prev_oc) < threshold:
+                continue
+            if oc * prev_oc >= 0:
+                continue
+            dc_flag = bool(dc_flags[idx]) if 0 <= idx < len(dc_flags) else False
+            hits.append(
+                IOVHit(
+                    seq_value=seq_val,
+                    idx=idx,
+                    ts=candles[idx].ts,
+                    oc=oc,
+                    prev_oc=prev_oc,
+                    used_dc=alloc.used_dc,
+                    dc_flag=dc_flag,
+                )
+            )
+        offsets.append(
+            IOVOffsetResult(
+                offset=offset,
+                offset_status=alignment.offset_status,
+                target_ts=alignment.target_ts,
+                actual_ts=alignment.actual_ts,
+                missing_steps=alignment.missing_steps,
+                hits=hits,
+            )
+        )
+
+    return IOVReport(
+        sequence=seq_key,
+        limit=threshold,
+        base_idx=base_idx,
+        base_status=base_status,
+        base_ts=base_ts,
+        offsets=offsets,
     )
 
 
