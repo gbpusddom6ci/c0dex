@@ -18,6 +18,7 @@ from .counter import (
     compute_offset_alignment,
     predict_time_after_n_steps,
     detect_iov_candles,
+    detect_iou_candles,
 )
 from .main import (
     Candle as ConverterCandle,
@@ -118,6 +119,7 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
       <a href='/dc' class='{ 'active' if active_tab=="dc" else '' }'>DC List</a>
       <a href='/matrix' class='{ 'active' if active_tab=="matrix" else '' }'>Matrix</a>
       <a href='/iov' class='{ 'active' if active_tab=="iov" else '' }'>IOV Tarama</a>
+      <a href='/iou' class='{ 'active' if active_tab=="iou" else '' }'>IOU Tarama</a>
       <a href='/converter' class='{ 'active' if active_tab=="converter" else '' }'>60→120 Converter</a>
     </nav>
     {body}
@@ -290,6 +292,48 @@ def render_iov_index() -> bytes:
     return page("app120 - IOV", body, active_tab="iov")
 
 
+def render_iou_index() -> bytes:
+    body = """
+    <div class='card'>
+      <form method='post' action='/iou' enctype='multipart/form-data'>
+        <div class='row'>
+          <div>
+            <label>CSV</label>
+            <input type='file' name='csv' accept='.csv,text/csv' required />
+          </div>
+          <div>
+            <label>Zaman Dilimi</label>
+            <div>120m</div>
+          </div>
+          <div>
+            <label>Girdi TZ</label>
+            <select name='input_tz'>
+              <option value='UTC-5' selected>UTC-5</option>
+              <option value='UTC-4'>UTC-4</option>
+            </select>
+          </div>
+          <div>
+            <label>Dizi</label>
+            <select name='sequence'>
+              <option value='S1'>S1</option>
+              <option value='S2' selected>S2</option>
+            </select>
+          </div>
+          <div>
+            <label>Limit (|OC|, |PrevOC|)</label>
+            <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
+          </div>
+        </div>
+        <div style='margin-top:12px;'>
+          <button type='submit'>IOU Tara</button>
+        </div>
+      </form>
+    </div>
+    <p>IOU mumlar, limit üzerindeki OC ve PrevOC değerlerinin aynı işareti paylaştığı durumlarda raporlanır.</p>
+    """
+    return page("app120 - IOU", body, active_tab="iou")
+
+
 def render_converter_index() -> bytes:
     body = """
     <div class='card'>
@@ -349,6 +393,8 @@ class App120Handler(BaseHTTPRequestHandler):
             body = render_matrix_index()
         elif self.path == "/iov":
             body = render_iov_index()
+        elif self.path == "/iou":
+            body = render_iou_index()
         elif self.path == "/converter":
             body = render_converter_index()
         else:
@@ -411,7 +457,7 @@ class App120Handler(BaseHTTPRequestHandler):
             if not candles:
                 raise ValueError("Veri boş veya çözümlenemedi")
 
-            sequence = (form.get("sequence", {}).get("value") or "S2").strip() if self.path in ("/analyze", "/matrix", "/iov") else "S2"
+            sequence = (form.get("sequence", {}).get("value") or "S2").strip() if self.path in ("/analyze", "/matrix", "/iov", "/iou") else "S2"
             offset_s = (form.get("offset", {}).get("value") or "0").strip() if self.path == "/analyze" else "0"
             show_dc = ("show_dc" in form) if self.path == "/analyze" else False
             tz_label_sel = (form.get("input_tz", {}).get("value") or "UTC-5").strip()
@@ -423,13 +469,14 @@ class App120Handler(BaseHTTPRequestHandler):
                 candles = [CounterCandle(ts=c.ts + delta, open=c.open, high=c.high, low=c.low, close=c.close) for c in candles]
                 tz_label = "UTC-5 -> UTC-4 (+1h)"
 
-            if self.path == "/iov":
+            if self.path in ("/iov", "/iou"):
                 limit_raw = (form.get("limit", {}).get("value") or "0").strip()
                 try:
                     limit_val = float(limit_raw)
                 except Exception:
                     limit_val = 0.0
-                report = detect_iov_candles(candles, sequence, limit_val)
+                detector = detect_iov_candles if self.path == "/iov" else detect_iou_candles
+                report = detector(candles, sequence, limit_val)
                 offset_statuses = []
                 offset_counts = []
                 total_hits = 0
@@ -467,6 +514,7 @@ class App120Handler(BaseHTTPRequestHandler):
                             f"</tr>"
                         )
 
+                metric_label = "IOV" if self.path == "/iov" else "IOU"
                 info = (
                     f"<div class='card'>"
                     f"<div><strong>Data:</strong> {len(candles)} candles</div>"
@@ -477,8 +525,8 @@ class App120Handler(BaseHTTPRequestHandler):
                     f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
                     f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
                     f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses))}</div>"
-                    f"<div><strong>Offset IOV sayıları:</strong> {html.escape(', '.join(offset_counts))}</div>"
-                    f"<div><strong>Toplam IOV:</strong> {total_hits}</div>"
+                    f"<div><strong>Offset {metric_label} sayıları:</strong> {html.escape(', '.join(offset_counts))}</div>"
+                    f"<div><strong>Toplam {metric_label}:</strong> {total_hits}</div>"
                     f"</div>"
                 )
 
@@ -486,13 +534,15 @@ class App120Handler(BaseHTTPRequestHandler):
                     header = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>"
                     table = header + "".join(rows_html) + "</tbody></table>"
                 else:
-                    table = "<p>IOV mum bulunamadı.</p>"
+                    table = f"<p>{metric_label} mum bulunamadı.</p>"
 
                 body = info + table
+                tab_key = "iov" if self.path == "/iov" else "iou"
+                title = f"app120 {metric_label}"
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(page("app120 IOV", body, active_tab="iov"))
+                self.wfile.write(page(title, body, active_tab=tab_key))
                 return
 
             if self.path == "/analyze":

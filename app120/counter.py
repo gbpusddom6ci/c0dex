@@ -2,7 +2,7 @@ import argparse
 import csv
 from dataclasses import dataclass
 from datetime import datetime, time as dtime, timedelta
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Callable
 
 
 MINUTES_PER_STEP = 120
@@ -184,7 +184,7 @@ class SequenceAllocation:
 
 
 @dataclass
-class IOVHit:
+class SignalHit:
     seq_value: int
     idx: int
     ts: datetime
@@ -195,23 +195,23 @@ class IOVHit:
 
 
 @dataclass
-class IOVOffsetResult:
+class SignalOffsetResult:
     offset: int
     offset_status: str
     target_ts: Optional[datetime]
     actual_ts: Optional[datetime]
     missing_steps: int
-    hits: List[IOVHit]
+    hits: List[SignalHit]
 
 
 @dataclass
-class IOVReport:
+class SignalReport:
     sequence: str
     limit: float
     base_idx: int
     base_status: str
     base_ts: Optional[datetime]
-    offsets: List[IOVOffsetResult]
+    offsets: List[SignalOffsetResult]
 
 
 def compute_sequence_allocations(
@@ -402,13 +402,15 @@ def compute_offset_alignment(
     )
 
 
-def detect_iov_candles(
+def _detect_signal_candles(
     candles: List[Candle],
     sequence: str,
     limit: float,
-) -> IOVReport:
+    condition: Callable[[float, float], bool],
+    empty_error: str,
+) -> SignalReport:
     if not candles:
-        raise ValueError("IOV analizi için mum verisi gerekli")
+        raise ValueError(empty_error)
 
     seq_key = (sequence or "S2").upper()
     if seq_key not in SEQUENCES:
@@ -421,10 +423,10 @@ def detect_iov_candles(
     base_ts = candles[base_idx].ts if 0 <= base_idx < len(candles) else None
     dc_flags = compute_dc_flags(candles)
 
-    offsets: List[IOVOffsetResult] = []
+    offsets: List[SignalOffsetResult] = []
     for offset in range(-3, 4):
         alignment = compute_offset_alignment(candles, dc_flags, base_idx, seq_values, offset)
-        hits: List[IOVHit] = []
+        hits: List[SignalHit] = []
         for seq_val, alloc in zip(seq_values, alignment.hits):
             if seq_val in skip_values:
                 continue
@@ -437,11 +439,11 @@ def detect_iov_candles(
             prev_oc = candles[idx - 1].close - candles[idx - 1].open
             if abs(oc) < threshold or abs(prev_oc) < threshold:
                 continue
-            if oc * prev_oc >= 0:
+            if not condition(oc, prev_oc):
                 continue
             dc_flag = bool(dc_flags[idx]) if 0 <= idx < len(dc_flags) else False
             hits.append(
-                IOVHit(
+                SignalHit(
                     seq_value=seq_val,
                     idx=idx,
                     ts=candles[idx].ts,
@@ -452,7 +454,7 @@ def detect_iov_candles(
                 )
             )
         offsets.append(
-            IOVOffsetResult(
+            SignalOffsetResult(
                 offset=offset,
                 offset_status=alignment.offset_status,
                 target_ts=alignment.target_ts,
@@ -462,13 +464,41 @@ def detect_iov_candles(
             )
         )
 
-    return IOVReport(
+    return SignalReport(
         sequence=seq_key,
         limit=threshold,
         base_idx=base_idx,
         base_status=base_status,
         base_ts=base_ts,
         offsets=offsets,
+    )
+
+
+def detect_iov_candles(
+    candles: List[Candle],
+    sequence: str,
+    limit: float,
+) -> SignalReport:
+    return _detect_signal_candles(
+        candles,
+        sequence,
+        limit,
+        condition=lambda oc, prev: oc * prev < 0,
+        empty_error="IOV analizi için mum verisi gerekli",
+    )
+
+
+def detect_iou_candles(
+    candles: List[Candle],
+    sequence: str,
+    limit: float,
+) -> SignalReport:
+    return _detect_signal_candles(
+        candles,
+        sequence,
+        limit,
+        condition=lambda oc, prev: oc * prev > 0,
+        empty_error="IOU analizi için mum verisi gerekli",
     )
 
 
