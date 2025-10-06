@@ -1,162 +1,192 @@
 # Proje Rehberi
 
-Bu doküman app321, app48, app72, app80 ve app120 uygulamalarının ortak kavramlarını ve uygulamaya özel kurallarını açıklar. Tüm açıklamalar Türkçe'dir ve en güncel davranışları yansıtır.
+Bu rehber, projedeki tüm alt uygulamaları (app321, app48, app72, app80, app120), destekleyici web katmanlarını ve veri kurallarını tek bir dokümanda toplar. Amaç, yeni devralan bir geliştiricinin veya başka bir yapay zekâ ajanın kod tabanını hiçbir ek kaynağa ihtiyaç duymadan anlayabilmesidir.
 
-## Temel Kavramlar
-- **Sayı dizileri:** Sayım işlemleri belirlenmiş sabit dizilere göre ilerler. Şu an desteklenen diziler:
-  - **S1:** `1, 3, 7, 13, 21, 31, 43, 57, 73, 91, 111, 133, 157`
-  - **S2:** `1, 5, 9, 17, 25, 37, 49, 65, 81, 101, 121, 145, 169`
-- **Mum verisi:** Sayım için giriş olarak CSV dosyaları kullanılır. Her satır bir mumdur.
-- **Timeframe:** app321 için 60 dakikalık, app48 için 48 dakikalık, app72 için 72 dakikalık, app80 için 80 dakikalık, app120 için 120 dakikalık mumlar işlenir.
-- **Varsayılan başlangıç saati:** Tüm uygulamalar varsayılan olarak 18:00 mumundan saymaya başlar.
+## 1. En Güncel Özellikler
 
-## CSV Formatı
-Aşağıdaki başlıklar zorunludur (eş anlamlılar desteklenir):
-```
-Time, Open, High, Low, Close (Last)
-```
-Saat değerleri ISO veya yaygın tarih-saat formatlarında olabilir. CSV dosyaları yüklenmeden önce sıralanır.
+- **2025-08 – app120 IOV/IOU çoklu dosya taraması:** IOV ve IOU web sekmeleri tek seferde birden fazla CSV dosyası kabul eder; her dosyanın sonuçları ayrı kartlarda raporlanır. Limit, dizi ve zaman dilimi ayarı tüm yüklemelere aynı anda uygulanır.
+- **2025-08 – IOU sinyal motoru:** IOV’e paralel olarak IOU (aynı işaretli OC/PrevOC) algılama eklendi.
+- **2025-08 – IOV sinyal motoru:** OC/PrevOC limit eşikleri ve işaret kontrolleriyle “Inverse Offset Value” mumları tanımlandı.
+- **2025-07 – app120 birleşik web arayüzü:** 120m analiz, DC listesi, offset matrisi ve 60→120 converter tek arayüzde birleştirildi.
+- **2025-06 – app80 & app72 converter’ları:** 20→80 ve 12→72 dakikalık dönüştürücüler web ve CLI olarak eklendi.
+- **2025-05 – app48 sentetik mum desteği:** Piyasa kapanış aralığını korumak için 18:00 ve 18:48 sentetik mumları eklendi.
+- **Daha eski çekirdek:** app321 (60m) sayımı, DC tespiti, offset matrisi ve tahmin desteği.
 
-## Distorted Candle (DC) Tanımı
-Bir mumun Distorted Candle (DC) sayılması için üç şart bir önceki muma göre aynı anda sağlanmalıdır:
-1. `High` değeri bir önceki mumun `High` değerini aşmamalı (eşit olabilir).
-2. `Low` değeri bir önceki mumun `Low` değerinin altına düşmemeli (eşit olabilir).
-3. `Close (Last)` değeri bir önceki mumun `Open` ve `Close` değerleri aralığında kapanmalıdır.
+## 2. Mimari Genel Bakış
 
-DC mumları normal sayımda atlanır. Ek olarak global kurallar:
-- 18:00 (varsayılan başlangıç mumu) hiçbir koşulda DC sayılmaz.
-- Ardışık iki DC oluşamaz; önceki mum DC ise sıradaki mum otomatik olarak normal mum kabul edilir.
-- Sayım tablolarında her gerçek mum için iki değer raporlanır:
-  - **OC:** İlgili mumun `Close - Open` farkı.
-  - **PrevOC:** Bir önceki mumun `Close - Open` farkı (mümkün değilse `-`).
-  Tahmini satırlarda OC/PrevOC değerleri `-` olarak gösterilir.
+### 2.1 Teknoloji Yığını
+- Python 3.11+. `.python-version` dosyası Render dağıtımı için Python sürümünü kilitler.
+- Standart kütüphane ağırlıklı; web arayüzleri `http.server` tabanlı minimal HTTP sunucuları kullanır.
+- Üretim için `gunicorn` (bkz. `requirements.txt`). Pandas/Numpy opsiyonel ve varsayılan olarak kullanılmıyor.
 
-### İstisnai Kapsayıcı Kural
-Sayım sırasında diziye ait bir adım bir DC mumuna denk gelirse, o adımın zamanı ilgili DC mumunun saati olarak kaydedilir. Bu eşleme yalnızca DC kuralı nedeniyle atlanması gereken mum tam olarak ilgili dizin adımını tamamlayacağı anda yapılır.
+### 2.2 Dizin Yapısı (Yeni → Eski)
+- `app120/` – 120 dakikalık analiz paketi (counter, converter, web UI).
+- `app80/`, `app72/`, `app48/`, `app321/` – diğer timeframe uygulamaları (CLI + web).
+- `app48_dc/`, `app321_dc/` – yalnızca DC listesi çıkaran yardımcı CLI’lar.
+- `appsuite/` – Tüm uygulamaları tek host altında reverse proxy’leyen birleşik arayüz.
+- `landing/` – Basit tanıtım sayfası, uygulama linklerini listeler.
+- Kök dizindeki `.csv` dosyaları test/örnek veri setleri.
 
-## Offset Mantığı
-- Offset, varsayılan 18:00 başlangıç mumuna göre -3 ile +3 arasında seçilebilir (`-3, -2, -1, 0, +1, +2, +3`).
-- Offset uygulanırken hedef zaman, **tabanda yakalanan 18:00 mumunun gerçek zamanından** dakikalık adımlar eklenerek hesaplanır. Bu yaklaşım, dizinin gün içinde kaymasını engeller.
-- Hedef zaman aralık dışındaysa veya mumu eksikse:
-  - Veri içinde hedefi karşılayan gerçek bir mum bulunursa sayım o mumdan başlatılır ve eksik adımların saatleri tahmini olarak `pred` etiketiyle gösterilir.
-  - Veride hedef saatten önce mum yoksa, tüm değerler tahmini zamanlarla (`pred`) listelenir.
-- Tahminler, ofset hedef zamanını temel alır; gerçek mum bulunduysa gerçek mumun normalleştirilmiş saati kullanılır.
+### 2.3 Ortak Modül Kalıbı
+Her timeframe klasöründe tipik olarak şu modüller bulunur:
+- `counter.py` / `main.py` – CLI aracı; offsetli sequence sayımını veya converter’ı yürütür.
+- `web.py` – Minimal HTTP sunucusu; HTML formları ve sonuç tabloları.
+- `__init__.py` – paket bildirimi.
 
-## Zaman Dilimleri
-- Kullanıcı girişinde iki seçenek vardır: `UTC-5` ve `UTC-4`.
-- **Giriş UTC-5 ise**, çıktılar UTC-4'e kaydırılır (tüm mumlar +1 saat).
-- **Giriş UTC-4 ise** herhangi bir zaman kaydırması yapılmaz.
+### 2.4 Veri Akışı
+1. CSV dosyası yüklenir, başlık eş anlamlılarıyla normalize edilir.
+2. Girdi `UTC-5` ise tüm timestamp’ler +1 saat kaydırılarak `UTC-4`’e normalize edilir.
+3. (app48) Sentetik mumlar eklenir; (diğerleri) veri sıralaması korunur.
+4. DC bayrakları hesaplanır → global + uygulamaya özel istisnalar uygulanır.
+5. Sequence dizisi, offset süreleri boyunca DC olmayan mumlarla eşleştirilir; gerektiğinde DC kapsayıcı kuralı devreye girer.
+6. OC (`Close - Open`) ve PrevOC farkları raporlanır; eksik veri için tahmin zamanları hesaplanır.
+7. app120 IOV/IOU sekmeleri ek olarak limit ve işaret kontrolleri yapar.
 
-## DC İstisna Saatleri
-- **app321 (60m):** 13:00–20:00 aralığındaki DC mumları normal mum gibi sayılır.
-- **app48 (48m):** 13:12–19:36 aralığındaki DC mumları normal mum gibi sayılır.
-- **app72 (72m):** 
-  - **18:00 mumu ASLA DC olamaz** (Pazar günü dahil - 2 haftalık veri için 2. hafta başlangıcı)
-  - **Cuma 16:48 mumu ASLA DC olamaz** (2 haftalık veri için 1. hafta bitimindeki son mum)
-  - **Pazar hariç, 19:12 ve 20:24 mumları DC olamaz** (günlük cycle noktaları)
-  - **Hafta kapanış mumu (Cuma 16:00) DC olamaz**
-- **app80 (80m):**
-  - **Pazar hariç, 18:00, 19:20 ve 20:40 mumları DC olamaz** (günlük cycle noktaları: 18:00, 18:00+80dk, 18:00+160dk)
-  - **Hafta kapanış mumu (Cuma 16:00) DC olamaz**
-- **app120 (120m):** DC istisnası yoktur; tüm DC mumlar saatten bağımsız şekilde atlanır (kapsayıcı kural geçerli). Hafta kapanışı sayılan 16:00 mumları (ardından >120 dakikalık boşluk başlayanlar) DC kabul edilmez.
+## 3. Ortak Kavramlar
 
-İstisna dışında kalan DC mumları sayımda atlanır ancak kapsayıcı kural gereği ilgili adımın zamanı olarak yazılabilir.
+### 3.1 CSV Formatı
+Gerekli sütunlar: `Time`, `Open`, `High`, `Low`, `Close (Last)` (eş anlamlılar desteklenir). Bozuk satırlar atlanır; veri timestamp’e göre sıralanır.
 
-## Uygulama Ayrıntıları
+### 3.2 Sequence Dizileri
+- **S1:** `1, 3, 7, 13, 21, 31, 43, 57, 73, 91, 111, 133, 157`
+- **S2:** `1, 5, 9, 17, 25, 37, 49, 65, 81, 101, 121, 145, 169`
 
-### app321
-- Başlangıç noktası: Verideki ilk 18:00 mumu (UTC-4 referansı). Offset seçimi hedef zamanı bu mumdan itibaren kaydırır.
-- Sayım adımları seçilen diziye göre ilerler (varsayılan S2).
-- Her ofset için gerçek mumlar gösterilir; eksik adımlar `pred` etiketiyle tahmin edilir.
-- **DC Listesi:** Yüklenen veri için tespit edilen tüm DC mumları listelenebilir. Saatler giriş verisinin ilgili zaman diliminde gösterilir (UTC-5 girişi gelirse liste UTC-4'e kaydırılır).
-- **Tahmin:** Veride bulunmayan adımlar için tahmini saat her zaman ana tabloda gösterilir; ek sekmeye gerek yoktur.
-- **Matrix Sekmesi:** Tüm offset değerleri (-3..+3) için aynı tabloda saatler ve tahminler sunulur. DC'den kaynaklanan eşleşmeler tabloda `(DC)` etiketiyle belirtilir.
+### 3.3 Distorted Candle (DC)
+Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değeri önceki mumun `[Open, Close]` aralığındadır. Aynı anda iki DC olamaz (ardışık DC engellenir). Varsayılan olarak 18:00 mumu asla DC olmaz.
 
-### app48
-- 48 dakikalık mumlar kullanılır ve varsayılan başlangıç yine 18:00'dir.
-- İlk sayım gününden sonraki her gün, piyasanın kapalı olduğu 18:00–19:36 aralığı için 18:00 ve 18:48 saatlerine yapay mumlar eklenir. Bu sayede sayım zinciri kesintiye uğramaz.
-- DC kuralları ve offset davranışı app321 ile aynıdır; tek fark DC istisna saatlerinin 13:12–19:36 olmasıdır.
-- Tahminler ve `pred` etiketi app321 ile aynı şekilde çalışır.
-- **DC ve Matrix Listeleri:** app48 için de DC listesi ve matrix görünümü aynı mantıkla sunulur (48 dakikalık adımlar dikkate alınarak).
-- **12m → 48m Converter:** app48 arayüzündeki yeni "12-48" sekmesi, UTC-5 12 dakikalık mumları UTC-4 48 dakikalık mumlara dönüştürür. Yüklenen veri önce +1 saat kaydırılır, ardından her gün 18:00'e hizalanan 48 dakikalık bloklar oluşturulur (18:00, 18:48, 19:36 ...). Her bloktaki close değeri bir sonraki bloğun open değerine eşitlenir; eğer bu değer bloktaki high/low sınırlarını aşıyorsa ilgili sınır close ile güncellenir. CSV çıktısında gereksiz sondaki sıfırlar kaldırılır.
+**İstisna Saatleri:**
+- app321: 13:00–20:00 arasında DC’ler normal mum kabul edilir.
+- app48: 13:12–19:36 arasında DC’ler normal mum kabul edilir.
+- app72: 18:00 (Pazar dahil), Cuma 16:48, (Pazar hariç) 19:12 ve 20:24, Cuma 16:00 DC olamaz.
+- app80: (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:00 DC olamaz.
+- app120: İstisna yok; yalnızca kapsayıcı kural uygulanır. Cuma 16:00 hafta kapanışı DC sayılmaz.
 
-### app72
-- 72 dakikalık mumlar kullanılır; 18:00 başlangıç saati standart.
-- **Sayım Mantığı:**
-  - S1 ve S2 dizileri desteklenir (varsayılan S2).
-  - Offset sistemi: -3 ile +3 arası (her adım 72 dakika).
-  - **Özel DC Kuralları (2 Haftalık Veri İçin):**
-    - **18:00 mumu ASLA DC olamaz** → Pazar günü dahil (ikinci hafta başlangıcı için kritik)
-    - **Cuma 16:48 mumu ASLA DC olamaz** → Birinci hafta bitimindeki son mum (16:00 kapanıştan 12 dk önce)
-    - **Pazar hariç 19:12 ve 20:24 DC olamaz** → Günlük cycle noktaları (18:00 + 72dk, 18:00 + 144dk)
-    - **Cuma 16:00 (hafta kapanış) DC olamaz**
-- **12m → 72m Converter (CLI: `python3 -m app72.main`):**
-  - 12 dakikalık UTC-5 mumları alır, UTC-4 72 dakikalık mumlara dönüştürür.
-  - Her 72 dakikalık mum 7 tane 12 dakikalık mumdan oluşur (7 × 12 = 84 ama offset mantığıyla 72 dakikaya düşer).
-  - Hafta sonu boşluğu: Cumartesi mumları atlanır, Pazar 18:00'dan önce mumlar göz ardı edilir.
-- **Web Arayüzü (`python3 -m app72.web`, port: 2172):**
-  1. **Analiz:** 72m sayım, sequence/offset seçimi, OC/PrevOC, DC gösterimi.
-  2. **DC List:** Tüm DC mumlarının listesi (2 haftalık veri kurallarına göre).
-  3. **Matrix:** Tüm offset'ler (-3..+3) için tek ekranda özet tablo.
-  4. **12→72 Converter:** 12m CSV yükle, 72m CSV indir.
+**Kapsayıcı Kural:** Bir sequence adımı DC’ye denk gelirse zaman damgası o DC mumuna yazılır.
 
-### app80
-- 80 dakikalık mumlar kullanılır; 18:00 başlangıç saati standart.
-- **Sayım Mantığı:**
-  - S1 ve S2 dizileri desteklenir (varsayılan S2).
-  - Offset sistemi: -3 ile +3 arası (her adım 80 dakika).
-  - **DC Kuralları:**
-    - **Pazar hariç, 18:00, 19:20 ve 20:40 mumları DC olamaz** → Günlük cycle noktaları (18:00, 18:00+80dk, 18:00+160dk)
-    - **Hafta kapanış mumu (Cuma 16:00) DC olamaz**
-- **20m → 80m Converter (CLI: `python3 -m app80.main`):**
-  - 20 dakikalık UTC-5 mumları alır, UTC-4 80 dakikalık mumlara dönüştürür.
-  - Her 80 dakikalık mum 4 tane 20 dakikalık mumdan oluşur (4 × 20 = 80).
-  - Hafta sonu boşluğu: Cumartesi mumları atlanır, Pazar 18:00'dan önce mumlar göz ardı edilir.
-  - Dönüştürme sırasında: Open = ilk mumun open, Close = son mumun close, High = max(high), Low = min(low).
-- **Web Arayüzü (`python3 -m app80.web`, port: 2180):**
-  1. **Analiz:** 80m sayım, sequence/offset seçimi, OC/PrevOC, DC gösterimi.
-  2. **DC List:** Tüm DC mumlarının listesi.
-  3. **Matrix:** Tüm offset'ler (-3..+3) için tek ekranda özet tablo.
-  4. **20→80 Converter:** 20m CSV yükle, 80m CSV indir.
+### 3.4 Offset Sistemi
+- Başlangıç noktası: yakalanan ilk 18:00 mumu.
+- Offset değerleri `-3..+3` arasıdır; timeframe dakika değeriyle çarpılarak hedef zaman belirlenir.
+- Hedef mum bulunamazsa (veri yoksa) tahmini saatler `pred` etiketiyle raporlanır.
 
-### app120
-- app321/app48 mantığındaki 120m sayımı, sinyal taramaları ve 60→120 dönüştürücüyü tek pakette sunar.
-- **Sayım (CLI: `python3 -m app120.counter`):**
-  - 120 dakikalık mumları 18:00 başlangıcına göre sayar; DC istisnası yoktur.
-  - OC/PrevOC bilgilerini aynı formatta raporlar; tahmin satırları `OC=- PrevOC=-` şeklinde etiketlenir.
-- **Dönüştürücü (CLI: `python3 -m app120`):** 60m UTC-5 verisini UTC-4 120m mumlarına çevirir; gereksiz trailing sıfırları temizler. Cumartesi mumları ile Pazar 18:00 öncesi mumlar yok sayılır; Cuma 16:00 kapanışından sonra doğrudan Pazar 18:00 açılış mumuna geçilir.
-- **IOV/IOU sinyal mantığı:**
-  - Limit değeri kullanıcı girdisi olup mutlak değer üzerinden değerlendirilir; `|OC|` ve `|PrevOC|` limitten küçükse mum sinyale girmez.
-  - S1 dizisinde 1 ve 3, S2 dizisinde 1 ve 5 sıraları her zaman sinyal taramasından hariç tutulur (hem IOV hem IOU için).
-  - DC kapsayıcı kuralıyla eşleşen sinyaller sonuç tablolarında `(rule)` etiketiyle gösterilir.
-  - **IOV (Inverse Offset Value):** Limit üzerindeki OC ve PrevOC değerleri zıt işaret taşımalıdır (biri +, diğeri −).
-  - **IOU (Inline Offset Unity):** Limit üzerindeki OC ve PrevOC değerleri aynı işareti taşımalıdır (ikisi + veya ikisi −).
-- **Web Arayüzü (`python3 -m app120.web`, port: 2120):** Altı sekme içerir:
-  1. **Analiz:** 120m sayım, OC/PrevOC, DC bilgileri.
-  2. **DC List:** Tüm DC mumlarının listesi (UTC dönüşümü kullanılarak).
-  3. **Matrix:** Tüm offset'ler için tek tabloda zaman/OC/PrevOC özetleri.
-  4. **IOV Tarama:** Limit, dizi ve timezone seçilerek IOV mumlarının offset bazında listelenmesi. Aynı anda birden fazla CSV seçilebilir; her dosya ayrı kartta raporlanır.
-  5. **IOU Tarama:** Limit, dizi ve timezone seçilerek IOU mumlarının offset bazında listelenmesi. Çoklu dosya yüklemelerinde tüm sonuçlar dosya bazlı gruplanır.
-  6. **60→120 Converter:** 60m CSV yükleyip dönüştürülmüş 120m CSV indirme.
+### 3.5 OC / PrevOC
+- **OC:** `Close - Open` (her gerçek mum için raporlanır, `+/-` işaretli 5 hane).
+- **PrevOC:** Bir önceki mumun OC değeri; yoksa `-`.
+- Tahmini satırlarda `OC=- PrevOC=-` gösterilir.
 
-## Özet
-- Giriş CSV’si düzgün formatlanmış olmalı ve zorunlu kolonları içermelidir.
-- Varsayılan başlangıç 18:00 mumu olup offset bu zaman üzerinden uygulanır.
-- **DC Kuralları Özeti:**
-  - **app321:** 13:00–20:00 DC istisna saatleri
-  - **app48:** 13:12–19:36 DC istisna saatleri
-  - **app72:** 18:00 (Pazar dahil) ve Cuma 16:48 ASLA DC olamaz; Pazar hariç 19:12 ve 20:24 DC olamaz
-  - **app80:** Pazar hariç 18:00, 19:20, 20:40 DC olamaz
-  - **app120:** DC istisnası yok, tüm DC'ler atılır
-- 18:00 mumu genelde DC olamaz (app72'de Pazar dahil) ve ardışık iki DC bulunmaz.
-- Her gerçek adım, mumun OC ve PrevOC değerleri ile birlikte raporlanır; tahmini satırlarda değerler `-` olarak gösterilir.
-- Eksik veriler tahmini zamanlarla (`pred`) gösterilir.
-- Tüm uygulamalar UTC-4/UTC-5 girişlerine uygun şekilde çıktı üretir.
-- **Converter Özeti:**
-  - **app48:** 12m → 48m (4 × 12m = 48m)
-  - **app72:** 12m → 72m (7 × 12m ≈ 72m, offset mantığıyla)
-  - **app80:** 20m → 80m (4 × 20m = 80m)
-  - **app120:** 60m → 120m (2 × 60m = 120m)
-- **Sinyal Özeti:** app120 IOV/IOU sekmeleri, limit eşiklerine göre OC/PrevOC değerlerini kontrol ederek offset bazında zıt/aynı işaretli mumları raporlar; S1 için 1 ve 3, S2 için 1 ve 5 sinyal dışıdır.
+### 3.6 Zaman Dilimi
+- Girdi seçenekleri: `UTC-4` veya `UTC-5`.
+- `UTC-5` seçilirse tüm mumlar +60 dakika kaydırılır ve çıktı `UTC-4`’e normalize edilir.
 
-Bu rehber, uygulamaların geliştirme ve kullanımında referans kabul edilmelidir.
+## 4. Uygulama Detayları (Yeni → Eski)
+
+### 4.1 app120 – 120 Dakikalık Analiz Platformu
+- **Modüller:**
+  - `counter.py` – 120m sequence sayımı, tahmin & DC analizi.
+  - `main.py` – 60m → 120m converter (CLI).
+  - `web.py` – Altı sekmeli web arayüzü.
+- **Web Sekmeleri (port 2120):**
+  1. **Analiz:** Sequence listesi, OC/PrevOC, DC bilgisi (`show_dc` seçeneği).
+  2. **DC List:** Tüm DC mumlarının ham OHLC çıktısı.
+  3. **Matrix:** Tüm offset değerleri için zaman/OC/PrevOC özet tablosu.
+  4. **IOV Tarama:** Çoklu CSV desteği; limit eşiklerini aşan ve zıt işaretli OC/PrevOC ikililerini dosya bazlı kartlarda listeler. S1 için `1` ve `3`, S2 için `1` ve `5` sinyal dışıdır. DC kapsaması `(rule)` etiketi ile görünür.
+  5. **IOU Tarama:** IOV ile aynı arayüz; farkı aynı işaretli OC/PrevOC’e odaklanmasıdır.
+  6. **60→120 Converter:** 60m CSV yüklenir, normalize edilir, 120m çıktısı CSV indirilebilir.
+- **CLI Örnekleri:**
+  ```bash
+  python3 -m app120.counter --csv data.csv --sequence S2 --offset +1 --show-dc
+  python3 -m app120.counter --csv data.csv --predict 37
+  python3 -m app120 --csv 60m.csv --input-tz UTC-5 --output 120m.csv
+  ```
+- **IOV/IOU Limit Mantığı:** Limit mutlak değerdir (0.1 → `|OC| ≥ 0.1`). Limit negatif girilirse `abs(limit)` alınır. Limit=0 durumunda sadece sıfır olmayan değerler eşik üstü kabul edilir.
+- **Çoklu Dosya Akışı:** Formdaki tüm CSV’ler aynı sequence/limit/TZ ile işlenir; her dosya için veri kapsamı, offset özetleri ve tablolar ayrı kartlarda sunulur.
+
+### 4.2 app80 – 80 Dakikalık Analiz
+- **Üç ana modül:** `counter.py`, `main.py` (20→80 converter), `web.py` (port 2180, dört sekme: Analiz, DC List, Matrix, Converter).
+- **DC Kısıtları:** (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:00 DC olamaz. Önceki DC yasağı geçerlidir.
+- **Converter:** 4 × 20m mum → 1 × 80m mum. Open=ilk open, Close=son close, High/Low blok içindeki max/min.
+- **CLI Örnekleri:**
+  ```bash
+  python3 -m app80.counter --csv data.csv --sequence S1 --offset -2
+  python3 -m app80.main --csv 20m.csv --input-tz UTC-5 --output 80m.csv
+  ```
+
+### 4.3 app72 – 72 Dakikalık Analiz
+- **Modüller:** `counter.py`, `main.py` (12→72 converter), `web.py` (port 2172).
+- **DC Kısıtları (2 haftalık veri varsayımı):** 18:00, Cuma 16:48, (Pazar hariç) 19:12 & 20:24, Cuma 16:00 DC olamaz.
+- **Converter:** 7 adet 12m mum → 1 adet 72m mum (Pazar 18:00 öncesi ve Cumartesi mumları atlanır). Haftasonu boşlukları otomatik geçilir.
+- **CLI Örnekleri:**
+  ```bash
+  python3 -m app72.counter --csv data.csv --sequence S2 --predict-next
+  python3 -m app72.main --csv 12m.csv --input-tz UTC-5 --output 72m.csv
+  ```
+
+### 4.4 app48 – 48 Dakikalık Analiz
+- **Özellikler:** Sentetik mum ekleme (ilk gün hariç, her gün 18:00 ve 18:48). Web portu 2020.
+- **Sentetik Mum Akışı:** 17:12 ve 19:36 gerçek mumları arasına 18:00/18:48 sentetik mumlar eklenir; open/close lineer şekilde setlenir (open = önceki close, close = sonraki open’a doğru interpolasyon, high/low min/max).
+- **DC İstisnası:** 13:12–19:36 arası DC’ler normal kabul edilir.
+- **CLI Örnekleri:**
+  ```bash
+  python3 -m app48.main --csv data.csv --input-tz UTC-5 --sequence S2 --offset +1 --show-dc
+  python3 -m app48.main --csv data.csv --predict 49
+  ```
+- **app48_dc CLI:** DC listesini çıkarır, sentetik mumları `tag=syn` etiketiyle gösterir.
+
+### 4.5 app321 – 60 Dakikalık Analiz
+- **Port 2019** için web arayüzü; sekmeler: Analiz, DC List, Matrix. (IOV/IOU yok.)
+- **DC İstisnası:** 13:00–20:00 arası DC’ler normal mum sayılır.
+- **Tahmin:** Sequence değerleri veri aralığı dışına taşarsa tahmini timestamp raporlanır.
+- **Matrix Sekmesi:** Tüm offset değerleri tek tabloda saat/OC/PrevOC olarak listelenir.
+- **CLI Örnekleri:**
+  ```bash
+  python3 -m app321.main --csv data.csv --sequence S1 --offset -3 --show-dc
+  python3 -m app321.main --csv data.csv --predict-next
+  ```
+- **app321_dc CLI:** 60m akışı için DC listesini hızlıca çıkarır.
+
+## 5. Web Katmanı ve Birleşik Arayüzler
+
+### 5.1 landing
+- `python3 -m landing.web --port 2000` ile çalışır; kart tabanlı landing sayfası üretir.
+- Uygulama URL’leri komut satırı argümanlarıyla değiştirilebilir.
+
+### 5.2 appsuite
+- Reverse proxy görevi görür; tüm uygulamaları tek host altında farklı path’lerle (`/app48`, `/app72`, ...).
+- Her backend ayrı thread’de başlatılır (`start_backend_thread`). HTML linkleri proxy prefix’ine göre rewrite edilir.
+- Health endpoint: `/health` → `ok`.
+
+### 5.3 Dağıtım Dosyaları
+- `Procfile` ve `render.yaml` Render.com dağıtımı için örnek konfigürasyon sağlar.
+- `Dockerfile` minimal Python imajıyla tüm web servislerini başlatmaya uygun temel sunar.
+
+## 6. Veri Setleri ve Örnek Dosyalar
+- `x.csv`, `x222.csv`, `test.csv`, `test48.csv`, `test_120m.csv`, `test_offset.csv` – Test veya demo akışları.
+- `points.csv` – 120m S1 örnek çıktısı (IOV örneği).
+- `120mdata.csv`, `4312.csv`, `ornekdata120.csv`, `tassak*.csv`, `ex12to48.csv` – Çeşitli deneme verileri.
+
+Bu dosyalar git repo’sunda tutuluyor; üretimde kullanılmadan önce uygun klasörlere taşınması önerilir.
+
+## 7. Kurulum ve Çalıştırma
+
+1. Python 3.11+ kurulu olmalı.
+2. (İsteğe bağlı) sanal ortam oluştur: `python3 -m venv .venv && source .venv/bin/activate`.
+3. Bağımlılıkları yükle: `pip install -r requirements.txt` (yalnızca `gunicorn`).
+4. CLI örneği: `python3 -m app120.counter --csv data.csv`.
+5. Web örneği: `python3 -m app120.web --host 0.0.0.0 --port 2120` (veya `appsuite` ile birleşik servis).
+6. Üretim için `gunicorn app120.web:main` benzeri komutlar Customize edilmelidir.
+
+## 8. Kullanım İpuçları
+
+- **IOV/IOU Çoklu Yükleme:** 25’e kadar CSV aynı formla seçilebilir; sonuçlarda hangi dosyanın hangi sinyali verdiği açıkça görülür.
+- **Limit Seçimi:** Limit değeri 0 girilmemelidir; sıfır değeri sinyallerin çoğunu eler.
+- **DC İncelemesi:** Şüpheli zaman aralıklarında `app48_dc` veya `app321_dc` CLI’larını kullanarak ham DC listesi çıkarabilirsiniz.
+- **Timezone Tutarlılığı:** Render’da güncel veri yüklerken girdi timezone’unu mutlaka seçin; aksi halde analiz kayar.
+- **Sentetik Mumlar:** app48 sonuçlarında sentetik mumlar normal count’a dahil, ancak DC listesinde `tag=syn` ile ayrışır.
+
+## 9. Geliştirici Notları
+
+- `__pycache__` klasörleri version control’de tutulmamalı; geliştirme sırasında otomatik oluşur.
+- CSV dosyaları büyükse (25 dosya yükleme) tarayıcı POST limitini aşmamak için boyut kontrolü yapın.
+- Yeni timeframe eklemek için en güncel örnek olarak `app120` mimarisini baz alın; ortak kurallar `CounterCandle` ve DC hesaplama fonksiyonlarıyla paylaşılabilir.
+- Render dağıtımında her web servisinin ayrı port’ta koştuğundan emin olun; `appsuite` tümünü proxy’lemek için en pratik çözüm.
+
+Bu doküman, proje kapsamı genişledikçe güncellenmelidir. Yeni bir özellik eklendiğinde, “En Güncel Özellikler” bölümüne tarih/özet eklemeyi unutmayın.
