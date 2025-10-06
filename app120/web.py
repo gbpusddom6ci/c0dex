@@ -257,7 +257,7 @@ def render_iov_index() -> bytes:
         <div class='row'>
           <div>
             <label>CSV</label>
-            <input type='file' name='csv' accept='.csv,text/csv' required />
+            <input type='file' name='csv' accept='.csv,text/csv' required multiple />
           </div>
           <div>
             <label>Zaman Dilimi</label>
@@ -287,7 +287,7 @@ def render_iov_index() -> bytes:
         </div>
       </form>
     </div>
-    <p>Limit, mumun OC ve PrevOC değerlerinin mutlak değeri için eşik belirler. Değeri aşan ve zıt işaretli çiftler IOV olarak raporlanır.</p>
+    <p>Limit, mumun OC ve PrevOC değerlerinin mutlak değeri için eşik belirler. Değeri aşan ve zıt işaretli çiftler IOV olarak raporlanır. Aynı anda birden fazla CSV seçebilirsin.</p>
     """
     return page("app120 - IOV", body, active_tab="iov")
 
@@ -299,7 +299,7 @@ def render_iou_index() -> bytes:
         <div class='row'>
           <div>
             <label>CSV</label>
-            <input type='file' name='csv' accept='.csv,text/csv' required />
+            <input type='file' name='csv' accept='.csv,text/csv' required multiple />
           </div>
           <div>
             <label>Zaman Dilimi</label>
@@ -329,7 +329,7 @@ def render_iou_index() -> bytes:
         </div>
       </form>
     </div>
-    <p>IOU mumlar, limit üzerindeki OC ve PrevOC değerlerinin aynı işareti paylaştığı durumlarda raporlanır.</p>
+    <p>IOU mumlar, limit üzerindeki OC ve PrevOC değerlerinin aynı işareti paylaştığı durumlarda raporlanır. Aynı anda birden fazla CSV seçebilirsin.</p>
     """
     return page("app120 - IOU", body, active_tab="iou")
 
@@ -372,7 +372,12 @@ def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]
             if data is None:
                 content = part.get_content()
                 data = content.encode("utf-8", errors="replace") if isinstance(content, str) else content
-            out[name] = {"filename": filename, "data": data or b""}
+            entry = {"filename": filename, "data": data or b""}
+            if name not in out:
+                out[name] = {"files": [entry]}
+            else:
+                files = out[name].setdefault("files", [])
+                files.append(entry)
         else:
             if payload is not None:
                 value = payload.decode("utf-8", errors="replace")
@@ -410,13 +415,20 @@ class App120Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
             form = parse_multipart(self)
-            file_obj = form.get("csv")
-            if not file_obj or "data" not in file_obj:
+            file_field = form.get("csv") or {}
+            files = [entry for entry in file_field.get("files", []) if entry.get("data") is not None]
+            if not files:
                 raise ValueError("CSV dosyası bulunamadı")
-            raw = file_obj["data"]
-            text = raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
+
+            def decode_entry(entry: Dict[str, Any]) -> str:
+                raw = entry.get("data")
+                if isinstance(raw, (bytes, bytearray)):
+                    return raw.decode("utf-8", errors="replace")
+                return str(raw)
 
             if self.path == "/converter":
+                entry = files[0]
+                text = decode_entry(entry)
                 candles = load_candles_from_text(text, ConverterCandle)
                 if not candles:
                     raise ValueError("Veri boş veya çözümlenemedi")
@@ -438,7 +450,7 @@ class App120Handler(BaseHTTPRequestHandler):
                         format_price(c.close),
                     ])
                 data = buffer.getvalue().encode("utf-8")
-                filename = file_obj.get("filename") or "converted.csv"
+                filename = entry.get("filename") or "converted.csv"
                 if "." in filename:
                     base, _ = filename.rsplit(".", 1)
                     download_name = base + "_120m.csv"
@@ -453,10 +465,6 @@ class App120Handler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 return
 
-            candles = load_candles_from_text(text, CounterCandle)
-            if not candles:
-                raise ValueError("Veri boş veya çözümlenemedi")
-
             sequence = (form.get("sequence", {}).get("value") or "S2").strip() if self.path in ("/analyze", "/matrix", "/iov", "/iou") else "S2"
             offset_s = (form.get("offset", {}).get("value") or "0").strip() if self.path == "/analyze" else "0"
             show_dc = ("show_dc" in form) if self.path == "/analyze" else False
@@ -464,10 +472,32 @@ class App120Handler(BaseHTTPRequestHandler):
 
             tz_norm = tz_label_sel.upper().replace(" ", "")
             tz_label = "UTC-4 -> UTC-4 (+0h)"
-            if tz_norm in {"UTC-5", "UTC-05", "UTC-05:00", "-05:00"}:
-                delta = timedelta(hours=1)
-                candles = [CounterCandle(ts=c.ts + delta, open=c.open, high=c.high, low=c.low, close=c.close) for c in candles]
+            tz_shift = timedelta(hours=1) if tz_norm in {"UTC-5", "UTC-05", "UTC-05:00", "-05:00"} else timedelta(0)
+            if tz_shift:
                 tz_label = "UTC-5 -> UTC-4 (+1h)"
+
+            def load_counter_candles(entry: Dict[str, Any]) -> List[CounterCandle]:
+                text_local = decode_entry(entry)
+                try:
+                    candles_local = load_candles_from_text(text_local, CounterCandle)
+                except ValueError as exc:
+                    name = entry.get("filename") or "dosya"
+                    raise ValueError(f"{name}: {exc}")
+                if not candles_local:
+                    name = entry.get("filename") or "dosya"
+                    raise ValueError(f"{name}: Veri boş veya çözümlenemedi")
+                if tz_shift:
+                    candles_local = [
+                        CounterCandle(
+                            ts=c.ts + tz_shift,
+                            open=c.open,
+                            high=c.high,
+                            low=c.low,
+                            close=c.close,
+                        )
+                        for c in candles_local
+                    ]
+                return candles_local
 
             if self.path in ("/iov", "/iou"):
                 limit_raw = (form.get("limit", {}).get("value") or "0").strip()
@@ -476,67 +506,73 @@ class App120Handler(BaseHTTPRequestHandler):
                 except Exception:
                     limit_val = 0.0
                 detector = detect_iov_candles if self.path == "/iov" else detect_iou_candles
-                report = detector(candles, sequence, limit_val)
-                offset_statuses = []
-                offset_counts = []
-                total_hits = 0
-                for item in report.offsets:
-                    off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
-                    status = item.offset_status or "-"
-                    status_label = f"{off_label}: {status}"
-                    if item.missing_steps:
-                        status_label += f" (missing {item.missing_steps})"
-                    offset_statuses.append(status_label)
-                    offset_counts.append(f"{off_label}: {len(item.hits)}")
-                    total_hits += len(item.hits)
-
-                rows_html = []
-                for item in report.offsets:
-                    if not item.hits:
-                        continue
-                    off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
-                    for hit in item.hits:
-                        ts_s = hit.ts.strftime('%Y-%m-%d %H:%M:%S')
-                        oc_label = format_pip(hit.oc)
-                        prev_label = format_pip(hit.prev_oc)
-                        dc_info = "True" if hit.dc_flag else "False"
-                        if hit.used_dc:
-                            dc_info += " (rule)"
-                        rows_html.append(
-                            f"<tr>"
-                            f"<td>{off_label}</td>"
-                            f"<td>{hit.seq_value}</td>"
-                            f"<td>{hit.idx}</td>"
-                            f"<td>{html.escape(ts_s)}</td>"
-                            f"<td>{html.escape(oc_label)}</td>"
-                            f"<td>{html.escape(prev_label)}</td>"
-                            f"<td>{dc_info}</td>"
-                            f"</tr>"
-                        )
-
                 metric_label = "IOV" if self.path == "/iov" else "IOU"
-                info = (
-                    f"<div class='card'>"
-                    f"<div><strong>Data:</strong> {len(candles)} candles</div>"
-                    f"<div><strong>Zaman Dilimi:</strong> 120m</div>"
-                    f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
-                    f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
-                    f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
-                    f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
-                    f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
-                    f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses))}</div>"
-                    f"<div><strong>Offset {metric_label} sayıları:</strong> {html.escape(', '.join(offset_counts))}</div>"
-                    f"<div><strong>Toplam {metric_label}:</strong> {total_hits}</div>"
-                    f"</div>"
-                )
 
-                if rows_html:
-                    header = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>"
-                    table = header + "".join(rows_html) + "</tbody></table>"
-                else:
-                    table = f"<p>{metric_label} mum bulunamadı.</p>"
+                sections: List[str] = []
+                for entry in files:
+                    candles = load_counter_candles(entry)
+                    report = detector(candles, sequence, limit_val)
 
-                body = info + table
+                    offset_statuses = []
+                    offset_counts = []
+                    total_hits = 0
+                    rows_html = []
+                    for item in report.offsets:
+                        off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
+                        status = item.offset_status or "-"
+                        status_label = f"{off_label}: {status}"
+                        if item.missing_steps:
+                            status_label += f" (missing {item.missing_steps})"
+                        offset_statuses.append(status_label)
+                        offset_counts.append(f"{off_label}: {len(item.hits)}")
+                        total_hits += len(item.hits)
+
+                        if item.hits:
+                            for hit in item.hits:
+                                ts_s = hit.ts.strftime('%Y-%m-%d %H:%M:%S')
+                                oc_label = format_pip(hit.oc)
+                                prev_label = format_pip(hit.prev_oc)
+                                dc_info = "True" if hit.dc_flag else "False"
+                                if hit.used_dc:
+                                    dc_info += " (rule)"
+                                rows_html.append(
+                                    f"<tr>"
+                                    f"<td>{off_label}</td>"
+                                    f"<td>{hit.seq_value}</td>"
+                                    f"<td>{hit.idx}</td>"
+                                    f"<td>{html.escape(ts_s)}</td>"
+                                    f"<td>{html.escape(oc_label)}</td>"
+                                    f"<td>{html.escape(prev_label)}</td>"
+                                    f"<td>{dc_info}</td>"
+                                    f"</tr>"
+                                )
+
+                    filename = entry.get("filename") or "uploaded.csv"
+                    info = (
+                        f"<div class='card'>"
+                        f"<h3>{html.escape(filename)}</h3>"
+                        f"<div><strong>Data:</strong> {len(candles)} candles</div>"
+                        f"<div><strong>Zaman Dilimi:</strong> 120m</div>"
+                        f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
+                        f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
+                        f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
+                        f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
+                        f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
+                        f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
+                        f"<div><strong>Offset {metric_label} sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
+                        f"<div><strong>Toplam {metric_label}:</strong> {total_hits}</div>"
+                        f"</div>"
+                    )
+
+                    if rows_html:
+                        header = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>"
+                        table = header + "".join(rows_html) + "</tbody></table>"
+                    else:
+                        table = f"<p>{metric_label} mum bulunamadı.</p>"
+
+                    sections.append(info + table)
+
+                body = "\n".join(sections)
                 tab_key = "iov" if self.path == "/iov" else "iou"
                 title = f"app120 {metric_label}"
                 self.send_response(200)
@@ -546,6 +582,8 @@ class App120Handler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/analyze":
+                entry = files[0]
+                candles = load_counter_candles(entry)
                 try:
                     offset = int(offset_s)
                 except Exception:
@@ -639,6 +677,8 @@ class App120Handler(BaseHTTPRequestHandler):
                 self.wfile.write(page("app120 sonuçlar", body, active_tab="analyze"))
                 return
 
+            entry = files[0]
+            candles = load_counter_candles(entry)
             dc_flags = compute_dc_flags(candles)
             if self.path == "/dc":
                 rows_html = []
