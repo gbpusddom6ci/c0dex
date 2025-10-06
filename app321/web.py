@@ -2,7 +2,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import argparse
 import html
 import io
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 from .main import (
     Candle,
@@ -14,6 +14,7 @@ from .main import (
     find_start_index,
     compute_dc_flags,
     compute_offset_alignment,
+    detect_iou_candles,
 )
 import csv
 from email.parser import BytesParser
@@ -108,6 +109,7 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
       <a href='/' class='{ 'active' if active_tab=="analyze" else '' }'>Analiz</a>
       <a href='/dc' class='{ 'active' if active_tab=="dc" else '' }'>DC List</a>
       <a href='/matrix' class='{ 'active' if active_tab=="matrix" else '' }'>Matrix</a>
+      <a href='/iou' class='{ 'active' if active_tab=="iou" else '' }'>IOU Tarama</a>
     </nav>
     {body}
   </body>
@@ -241,6 +243,48 @@ def render_matrix_index() -> bytes:
     return page("app321 - Matrix", body, active_tab="matrix")
 
 
+def render_iou_index() -> bytes:
+    body = """
+    <div class='card'>
+      <form method='post' action='/iou' enctype='multipart/form-data'>
+        <div class='row'>
+          <div>
+            <label>CSV</label>
+            <input type='file' name='csv' accept='.csv,text/csv' required multiple />
+          </div>
+          <div>
+            <label>Zaman Dilimi</label>
+            <div>60m</div>
+          </div>
+          <div>
+            <label>Girdi TZ</label>
+            <select name='input_tz'>
+              <option value='UTC-5' selected>UTC-5</option>
+              <option value='UTC-4'>UTC-4</option>
+            </select>
+          </div>
+          <div>
+            <label>Dizi</label>
+            <select name='sequence'>
+              <option value='S1'>S1</option>
+              <option value='S2' selected>S2</option>
+            </select>
+          </div>
+          <div>
+            <label>Limit (|OC|, |PrevOC|)</label>
+            <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
+          </div>
+        </div>
+        <div style='margin-top:12px;'>
+          <button type='submit'>IOU Tara</button>
+        </div>
+      </form>
+    </div>
+    <p>IOU mumlar, limit eşiğinin üzerindeki OC ve PrevOC değerlerinin aynı işaretli olduğu durumlarda raporlanır. Birden fazla CSV aynı anda seçilebilir.</p>
+    """
+    return page("app321 - IOU", body, active_tab="iou")
+
+
 class AppHandler(BaseHTTPRequestHandler):
     def _parse_multipart(self) -> Dict[str, Any]:
         ct = self.headers.get("Content-Type", "")
@@ -270,7 +314,11 @@ class AppHandler(BaseHTTPRequestHandler):
             if not name:
                 continue
             if filename is not None:
-                fields[name] = {"filename": filename, "data": payload}
+                entry = {"filename": filename, "data": payload}
+                if name not in fields:
+                    fields[name] = {"files": [entry]}
+                else:
+                    fields[name].setdefault("files", []).append(entry)
             else:
                 charset = part.get_content_charset() or "utf-8"
                 try:
@@ -292,42 +340,47 @@ class AppHandler(BaseHTTPRequestHandler):
             self.wfile.write(render_index())
 
     def do_POST(self):
-        if self.path not in ("/analyze", "/dc", "/matrix"):
+        if self.path not in ("/analyze", "/dc", "/matrix", "/iou"):
             self.send_error(404)
             return
         try:
             form = self._parse_multipart()
-
-            file_item = form.get("csv")
-            if not file_item or "data" not in file_item:
+            file_field = form.get("csv") or {}
+            files = [entry for entry in file_field.get("files", []) if entry.get("data") is not None]
+            if not files:
                 raise ValueError("CSV yüklenmedi")
 
-            raw = file_item["data"]
-            text = raw.decode("utf-8", errors="replace")
+            def decode_entry(entry: Dict[str, Any]) -> str:
+                raw = entry.get("data")
+                if isinstance(raw, (bytes, bytearray)):
+                    return raw.decode("utf-8", errors="replace")
+                return str(raw)
 
-            sequence = (form.get("sequence", {}).get("value") or "S2").strip() if self.path == "/analyze" else "S2"
-            offset_s = (form.get("offset", {}).get("value") or "0").strip() if self.path == "/analyze" else "0"
-            show_dc = ("show_dc" in form) if self.path == "/analyze" else False
-            tz_s = (form.get("input_tz", {}).get("value") or "UTC-4").strip() if self.path in ("/dc", "/matrix") else None
-            seq_mx = (form.get("sequence", {}).get("value") or "S2").strip() if self.path == "/matrix" else None
-            tz_an = (form.get("input_tz", {}).get("value") or "UTC-5").strip() if self.path == "/analyze" else None
-
-            candles = load_candles_from_text(text)
-            if not candles:
-                raise ValueError("Veri boş veya çözümlenemedi")
+            def apply_tz(candles: List[Candle], tz_value: Optional[str]) -> Tuple[List[Candle], str]:
+                tz_norm = (tz_value or "UTC-4").strip().upper().replace(" ", "")
+                if tz_norm in {"UTC-5", "UTC-05", "UTC-05:00", "-05:00"}:
+                    delta = timedelta(hours=1)
+                    shifted = [
+                        Candle(ts=c.ts + delta, open=c.open, high=c.high, low=c.low, close=c.close)
+                        for c in candles
+                    ]
+                    return shifted, "UTC-5 -> UTC-4 (+1h)"
+                return candles, "UTC-4 -> UTC-4 (+0h)"
 
             if self.path == "/analyze":
+                entry = files[0]
+                candles = load_candles_from_text(decode_entry(entry))
+                if not candles:
+                    raise ValueError("Veri boş veya çözümlenemedi")
+
+                sequence = (form.get("sequence", {}).get("value") or "S2").strip()
+                offset_s = (form.get("offset", {}).get("value") or "0").strip()
+                show_dc = "show_dc" in form
+                tz_an = (form.get("input_tz", {}).get("value") or "UTC-5").strip()
+
+                candles, tz_label = apply_tz(candles, tz_an)
+
                 start_tod = dtime(hour=18, minute=0)
-                # Optional TZ normalize for analysis as well
-                tz_label = None
-                if tz_an:
-                    tz_norm = tz_an.strip().upper().replace(" ", "")
-                    if tz_norm in {"UTC-5", "UTC-05", "UTC-05:00", "-05:00"}:
-                        delta = timedelta(hours=1)
-                        candles = [Candle(ts=c.ts + delta, open=c.open, high=c.high, low=c.low, close=c.close) for c in candles]
-                        tz_label = "UTC-5 -> UTC-4 (+1h)"
-                    else:
-                        tz_label = "UTC-4 -> UTC-4 (+0h)"
                 base_idx, align_status = find_start_index(candles, start_tod)
                 try:
                     off = int(offset_s)
@@ -337,31 +390,21 @@ class AppHandler(BaseHTTPRequestHandler):
                     off = 0
 
                 seq_values = SEQUENCES.get(sequence, SEQUENCES["S2"])[:]
-
                 dc_flags_all = compute_dc_flags(candles)
                 alignment = compute_offset_alignment(candles, dc_flags_all, base_idx, seq_values, off)
-                start_idx = alignment.start_idx
-                target_ts = alignment.target_ts
-                offset_status = alignment.offset_status
-                actual_ts = alignment.actual_ts
-                start_ref_ts = alignment.start_ref_ts
-                hits = alignment.hits
 
-                # Build rows (with prediction for out-of-range)
                 rows_html = []
-                for v, hit in zip(seq_values, hits):
+                for v, hit in zip(seq_values, alignment.hits):
                     idx = hit.idx
                     ts = hit.ts
                     if idx is None or ts is None or not (0 <= idx < len(candles)):
                         first = seq_values[0]
                         use_target = alignment.missing_steps and v <= alignment.missing_steps
-                        
-                        # DC'leri dikkate al
                         if not use_target:
                             last_known_v = None
                             last_known_ts = None
                             last_known_idx = -1
-                            for seq_v, seq_hit in zip(seq_values, hits):
+                            for seq_v, seq_hit in zip(seq_values, alignment.hits):
                                 if seq_hit.idx is not None and seq_hit.ts is not None and 0 <= seq_hit.idx < len(candles):
                                     last_known_v = seq_v
                                     last_known_ts = seq_hit.ts
@@ -369,29 +412,28 @@ class AppHandler(BaseHTTPRequestHandler):
                             if last_known_v is not None and v > last_known_v:
                                 actual_last_candle_ts = candles[-1].ts
                                 actual_last_idx = len(candles) - 1
-                                non_dc_steps_from_last_known_to_end = 0
+                                non_dc_steps = 0
                                 for i in range(last_known_idx + 1, actual_last_idx + 1):
-                                    is_dc = dc_flags_all[i] if i < len(dc_flags_all) else False
-                                    if not is_dc:
-                                        non_dc_steps_from_last_known_to_end += 1
-                                steps_from_end_to_v = (v - last_known_v) - non_dc_steps_from_last_known_to_end
-                                pred_ts_dt = actual_last_candle_ts + __import__('datetime').timedelta(minutes=60 * steps_from_end_to_v)
+                                    if not dc_flags_all[i]:
+                                        non_dc_steps += 1
+                                steps_from_end = (v - last_known_v) - non_dc_steps
+                                pred_ts_dt = actual_last_candle_ts + timedelta(minutes=60 * steps_from_end)
                             else:
                                 delta_steps = max(0, v - first)
-                                base_ts = start_ref_ts or alignment.target_ts
-                                pred_ts_dt = base_ts + __import__('datetime').timedelta(minutes=60 * delta_steps)
+                                base_ts = alignment.start_ref_ts or alignment.target_ts
+                                pred_ts_dt = (base_ts or candles[base_idx].ts) + timedelta(minutes=60 * delta_steps)
                         else:
                             delta_steps = max(0, v - first)
-                            base_ts = alignment.target_ts if use_target else start_ref_ts
-                            pred_ts_dt = base_ts + __import__('datetime').timedelta(minutes=60 * delta_steps)
-                        
-                        pred_ts = pred_ts_dt.strftime("%Y-%m-%d %H:%M:%S")
-                        pred_cell = f"{pred_ts} (pred, OC -, PrevOC -)"
+                            base_ts = alignment.target_ts or alignment.start_ref_ts or candles[base_idx].ts
+                            pred_ts_dt = base_ts + timedelta(minutes=60 * delta_steps)
+
+                        pred_cell = f"{pred_ts_dt.strftime('%Y-%m-%d %H:%M:%S')} (pred, OC -, PrevOC -)"
                         if show_dc:
                             rows_html.append(f"<tr><td>{v}</td><td>-</td><td>{html.escape(pred_cell)}</td><td>-</td></tr>")
                         else:
                             rows_html.append(f"<tr><td>{v}</td><td>-</td><td>{html.escape(pred_cell)}</td></tr>")
                         continue
+
                     ts_s = ts.strftime("%Y-%m-%d %H:%M:%S")
                     pip_label = format_pip(candles[idx].close - candles[idx].open)
                     prev_label = format_pip(candles[idx - 1].close - candles[idx - 1].open) if idx - 1 >= 0 else "-"
@@ -405,24 +447,23 @@ class AppHandler(BaseHTTPRequestHandler):
                     else:
                         rows_html.append(f"<tr><td>{v}</td><td>{idx}</td><td>{html.escape(ts_with_pip)}</td></tr>")
 
-                start_target_s = html.escape(target_ts.strftime('%Y-%m-%d %H:%M:%S')) if target_ts else "-"
-                actual_ts_s = html.escape(actual_ts.strftime('%Y-%m-%d %H:%M:%S')) if actual_ts else "-"
-                start_idx_s = str(start_idx) if start_idx is not None else "-"
+                start_target_s = html.escape(alignment.target_ts.strftime('%Y-%m-%d %H:%M:%S')) if alignment.target_ts else "-"
+                actual_ts_s = html.escape(alignment.actual_ts.strftime('%Y-%m-%d %H:%M:%S')) if alignment.actual_ts else "-"
+                start_idx_s = str(alignment.start_idx) if alignment.start_idx is not None else "-"
 
                 info_lines = [
                     f"<div><strong>Data:</strong> {len(candles)} candles</div>",
                     f"<div><strong>Zaman Dilimi:</strong> 60m</div>",
                     f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>",
-                    (f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>" if tz_label else ""),
-                    f"<div><strong>Start:</strong> base(18:00): idx={base_idx} ts={html.escape(candles[base_idx].ts.strftime('%Y-%m-%d %H:%M:%S'))} ({align_status}); "
-                    f"offset={off} =&gt; target_ts={start_target_s} ({offset_status}) idx={start_idx_s} actual_ts={actual_ts_s} missing_steps={alignment.missing_steps}</div>",
+                    f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>",
+                    f"<div><strong>Start:</strong> base(18:00): idx={base_idx} ts={html.escape(candles[base_idx].ts.strftime('%Y-%m-%d %H:%M:%S'))} ({align_status}); offset={off} =&gt; target_ts={start_target_s} ({alignment.offset_status}) idx={start_idx_s} actual_ts={actual_ts_s} missing_steps={alignment.missing_steps}</div>",
                     f"<div><strong>Sequence:</strong> {html.escape(sequence)} {html.escape(str(seq_values))}</div>",
                 ]
 
+                header = "<tr><th>Seq</th><th>Index</th><th>Timestamp</th>"
                 if show_dc:
-                    header = "<tr><th>Seq</th><th>Index</th><th>Timestamp</th><th>DC</th></tr>"
-                else:
-                    header = "<tr><th>Seq</th><th>Index</th><th>Timestamp</th></tr>"
+                    header += "<th>DC</th>"
+                header += "</tr>"
 
                 table = f"<table><thead>{header}</thead><tbody>{''.join(rows_html)}</tbody></table>"
                 body = "<div class='card'>" + "".join(info_lines) + "</div>" + table
@@ -431,20 +472,20 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(page("app321 sonuçlar", body, active_tab="analyze"))
-            elif self.path == "/dc":
-                # DC list branch
-                # Optional TZ normalize to UTC-4: if input is UTC-5 shift +1h
-                if tz_s:
-                    tz_norm = tz_s.strip().upper().replace(" ", "")
-                    if tz_norm in {"UTC-5", "UTC-05", "UTC-05:00", "-05:00"}:
-                        delta = timedelta(hours=1)
-                        candles = [Candle(ts=c.ts + delta, open=c.open, high=c.high, low=c.low, close=c.close) for c in candles]
-                    # UTC-4 -> no change
-                flags = compute_dc_flags(candles)
+                return
+
+            entry = files[0]
+            candles = load_candles_from_text(decode_entry(entry))
+            if not candles:
+                raise ValueError("Veri boş veya çözümlenemedi")
+
+            if self.path == "/dc":
+                candles, tz_label = apply_tz(candles, (form.get("input_tz", {}).get("value") or "UTC-5").strip())
+                dc_flags = compute_dc_flags(candles)
                 rows_html = []
                 count = 0
                 for i, c in enumerate(candles):
-                    if not flags[i]:
+                    if not dc_flags[i]:
                         continue
                     ts = c.ts.strftime("%Y-%m-%d %H:%M:%S")
                     rows_html.append(f"<tr><td>{i}</td><td>{html.escape(ts)}</td><td>{c.open}</td><td>{c.high}</td><td>{c.low}</td><td>{c.close}</td></tr>")
@@ -455,7 +496,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     f"<div class='card'>"
                     f"<div><strong>Data:</strong> {len(candles)} candles</div>"
                     f"<div><strong>Zaman Dilimi:</strong> 60m</div>"
-                    + (f"<div><strong>TZ:</strong> input={html.escape(tz_s)}</div>" if tz_s else "") +
+                    f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
                     f"<div><strong>DC count:</strong> {count}</div>"
                     f"</div>"
                 )
@@ -464,61 +505,44 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(page("app321 DC List", body, active_tab="dc"))
-            else:
-                # Matrix branch
-                # Optional TZ normalize to UTC-4 similar to analysis/dc
-                tz_label = None
-                if tz_s:
-                    tz_norm = tz_s.strip().upper().replace(" ", "")
-                    if tz_norm in {"UTC-5", "UTC-05", "UTC-05:00", "-05:00"}:
-                        delta = timedelta(hours=1)
-                        candles = [Candle(ts=c.ts + delta, open=c.open, high=c.high, low=c.low, close=c.close) for c in candles]
-                        tz_label = "UTC-5 -> UTC-4 (+1h)"
-                    else:
-                        tz_label = "UTC-4 -> UTC-4 (+0h)"
+                return
 
-                start_tod = dtime(hour=18, minute=0)
-                base_idx, align_status = find_start_index(candles, start_tod)
-                seq_values = SEQUENCES.get(seq_mx or "S2", SEQUENCES["S2"])[:]
-                flags = compute_dc_flags(candles)
-
-                # Build matrix table
+            if self.path == "/matrix":
+                candles, tz_label = apply_tz(candles, (form.get("input_tz", {}).get("value") or "UTC-5").strip())
+                seq_mx = (form.get("sequence", {}).get("value") or "S2").strip()
+                seq_values = SEQUENCES.get(seq_mx, SEQUENCES["S2"])[:]
+                base_idx, align_status = find_start_index(candles, dtime(hour=18, minute=0))
+                dc_flags = compute_dc_flags(candles)
                 offsets = [-3, -2, -1, 0, 1, 2, 3]
-                header_cells = ''.join(f"<th>{'+'+str(o) if o>0 else str(o)}</th>" for o in offsets)
-                thead = f"<tr><th>Seq</th>{header_cells}</tr>"
-                rows = []
-                per_offset = {}
-                for o in offsets:
-                    alignment = compute_offset_alignment(candles, flags, base_idx, seq_values, o)
-                    per_offset[o] = alignment
+                per_offset = {o: compute_offset_alignment(candles, dc_flags, base_idx, seq_values, o) for o in offsets}
 
-                for v in seq_values:
+                header_cells = ''.join(f"<th>{'+'+str(o) if o>0 else str(o)}</th>" for o in offsets)
+                rows = []
+                for idx_seq, v in enumerate(seq_values):
                     cells = [f"<td>{v}</td>"]
-                    vi = seq_values.index(v)
                     for o in offsets:
                         alignment = per_offset[o]
-                        hit = alignment.hits[vi] if vi < len(alignment.hits) else None
-                        idx = hit.idx if hit else None
-                        ts = hit.ts if hit else None
-                        if idx is not None and ts is not None and 0 <= idx < len(candles):
-                            ts_s = ts.strftime('%Y-%m-%d %H:%M:%S')
-                            oc_label = format_pip(candles[idx].close - candles[idx].open)
-                            prev_label = format_pip(candles[idx - 1].close - candles[idx - 1].open) if idx - 1 >= 0 else "-"
+                        hit = alignment.hits[idx_seq] if idx_seq < len(alignment.hits) else None
+                        idx_hit = hit.idx if hit else None
+                        ts_hit = hit.ts if hit else None
+                        if idx_hit is not None and ts_hit is not None and 0 <= idx_hit < len(candles):
+                            ts_s = ts_hit.strftime('%Y-%m-%d %H:%M:%S')
+                            oc_label = format_pip(candles[idx_hit].close - candles[idx_hit].open)
+                            prev_label = format_pip(candles[idx_hit - 1].close - candles[idx_hit - 1].open) if idx_hit - 1 >= 0 else "-"
                             label = f"{ts_s} (OC {oc_label}, PrevOC {prev_label})"
                             if hit.used_dc:
                                 label += " (DC)"
                             cells.append(f"<td>{html.escape(label)}</td>")
                         else:
-                            # prediction path based on that offset's aligned start_ts
                             first = seq_values[0]
                             delta_steps = max(0, v - first)
-                            use_target = alignment.missing_steps and v <= alignment.missing_steps
-                            base_ts = alignment.target_ts if use_target else alignment.start_ref_ts
-                            ts_pred = (base_ts + __import__('datetime').timedelta(minutes=60*delta_steps)).strftime('%Y-%m-%d %H:%M:%S')
+                            base_ts = alignment.target_ts if alignment.missing_steps and v <= alignment.missing_steps else alignment.start_ref_ts
+                            base_ts = base_ts or candles[base_idx].ts
+                            ts_pred = (base_ts + timedelta(minutes=60 * delta_steps)).strftime('%Y-%m-%d %H:%M:%S')
                             cells.append(f"<td>{html.escape(ts_pred)} (pred, OC -, PrevOC -)</td>")
                     rows.append(f"<tr>{''.join(cells)}</tr>")
-                table = f"<table><thead>{thead}</thead><tbody>{''.join(rows)}</tbody></table>"
 
+                table = f"<table><thead><tr><th>Seq</th>{header_cells}</tr></thead><tbody>{''.join(rows)}</tbody></table>"
                 status_summary = ', '.join(
                     f"{('+' + str(o)) if o > 0 else str(o)}: {per_offset[o].offset_status}"
                     for o in offsets
@@ -528,8 +552,8 @@ class AppHandler(BaseHTTPRequestHandler):
                     f"<div><strong>Data:</strong> {len(candles)} candles</div>"
                     f"<div><strong>Zaman Dilimi:</strong> 60m</div>"
                     f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
-                    + (f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>" if tz_label else "") +
-                    f"<div><strong>Sequence:</strong> {html.escape(seq_mx or 'S2')}</div>"
+                    f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
+                    f"<div><strong>Sequence:</strong> {html.escape(seq_mx)}</div>"
                     f"<div><strong>Offset durumları:</strong> {html.escape(status_summary)}</div>"
                     f"</div>"
                 )
@@ -538,9 +562,95 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(page("app321 - Matrix", body, active_tab="matrix"))
-            # (no other branches)
-        except Exception as e:
-            msg = html.escape(str(e) or "Bilinmeyen hata")
+                return
+
+            # IOU branch
+            tz_value = (form.get("input_tz", {}).get("value") or "UTC-5").strip()
+            sequence = (form.get("sequence", {}).get("value") or "S2").strip()
+            limit_raw = (form.get("limit", {}).get("value") or "0").strip()
+            try:
+                limit_val = float(limit_raw)
+            except Exception:
+                limit_val = 0.0
+
+            tz_norm = tz_value.upper().replace(" ", "")
+            tz_shift = timedelta(hours=1) if tz_norm in {"UTC-5", "UTC-05", "UTC-05:00", "-05:00"} else timedelta(0)
+            tz_label = "UTC-5 -> UTC-4 (+1h)" if tz_shift else "UTC-4 -> UTC-4 (+0h)"
+
+            sections: List[str] = []
+            for entry in files:
+                text = decode_entry(entry)
+                name = entry.get("filename") or "uploaded.csv"
+                candles_raw = load_candles_from_text(text)
+                if not candles_raw:
+                    raise ValueError(f"{name}: Veri boş veya çözümlenemedi")
+                if tz_shift:
+                    candles_use = [
+                        Candle(ts=c.ts + tz_shift, open=c.open, high=c.high, low=c.low, close=c.close)
+                        for c in candles_raw
+                    ]
+                else:
+                    candles_use = candles_raw
+
+                report = detect_iou_candles(candles_use, sequence, limit_val)
+                offset_statuses: List[str] = []
+                offset_counts: List[str] = []
+                total_hits = 0
+                rows: List[str] = []
+                for item in report.offsets:
+                    off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
+                    status = item.offset_status or "-"
+                    status_label = f"{off_label}: {status}"
+                    if item.missing_steps:
+                        status_label += f" (missing {item.missing_steps})"
+                    offset_statuses.append(status_label)
+
+                    hit_count = len(item.hits)
+                    offset_counts.append(f"{off_label}: {hit_count}")
+                    total_hits += hit_count
+
+                    for hit in item.hits:
+                        ts_s = hit.ts.strftime('%Y-%m-%d %H:%M:%S')
+                        oc_label = format_pip(hit.oc)
+                        prev_label = format_pip(hit.prev_oc)
+                        dc_info = "True" if hit.dc_flag else "False"
+                        if hit.used_dc:
+                            dc_info += " (rule)"
+                        rows.append(
+                            f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
+                            f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"
+                            f"<td>{html.escape(prev_label)}</td><td>{dc_info}</td></tr>"
+                        )
+
+                info = (
+                    f"<div class='card'>"
+                    f"<h3>{html.escape(name)}</h3>"
+                    f"<div><strong>Data:</strong> {len(candles_use)} candles</div>"
+                    f"<div><strong>Range:</strong> {html.escape(candles_use[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles_use[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
+                    f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
+                    f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
+                    f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
+                    f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
+                    f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
+                    f"<div><strong>Offset IOU sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
+                    f"<div><strong>Toplam IOU:</strong> {total_hits}</div>"
+                    f"</div>"
+                )
+
+                if rows:
+                    table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+                else:
+                    table = "<p>IOU mum bulunamadı.</p>"
+
+                sections.append(info + table)
+
+            body = "\n".join(sections)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(page("app321 IOU", body, active_tab="iou"))
+        except Exception as exc:
+            msg = html.escape(str(exc) or "Bilinmeyen hata")
             self.send_response(400)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()

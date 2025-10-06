@@ -17,6 +17,7 @@ from .counter import (
     compute_dc_flags,
     compute_offset_alignment,
     predict_time_after_n_steps,
+    detect_iou_candles,
 )
 from .main import (
     Candle as ConverterCandle,
@@ -117,6 +118,7 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
       <a href='/dc' class='{ 'active' if active_tab=="dc" else '' }'>DC List</a>
       <a href='/matrix' class='{ 'active' if active_tab=="matrix" else '' }'>Matrix</a>
       <a href='/converter' class='{ 'active' if active_tab=="converter" else '' }'>20→80 Converter</a>
+      <a href='/iou' class='{ 'active' if active_tab=="iou" else '' }'>IOU Tarama</a>
     </nav>
     {body}
   </body>
@@ -264,6 +266,48 @@ def render_converter_index() -> bytes:
     return page("app80 - Converter", body, active_tab="converter")
 
 
+def render_iou_index() -> bytes:
+    body = """
+    <div class='card'>
+      <form method='post' action='/iou' enctype='multipart/form-data'>
+        <div class='row'>
+          <div>
+            <label>CSV</label>
+            <input type='file' name='csv' accept='.csv,text/csv' required multiple />
+          </div>
+          <div>
+            <label>Zaman Dilimi</label>
+            <div>80m</div>
+          </div>
+          <div>
+            <label>Girdi TZ</label>
+            <select name='input_tz'>
+              <option value='UTC-5' selected>UTC-5</option>
+              <option value='UTC-4'>UTC-4</option>
+            </select>
+          </div>
+          <div>
+            <label>Dizi</label>
+            <select name='sequence'>
+              <option value='S1'>S1</option>
+              <option value='S2' selected>S2</option>
+            </select>
+          </div>
+          <div>
+            <label>Limit (|OC|, |PrevOC|)</label>
+            <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
+          </div>
+        </div>
+        <div style='margin-top:12px;'>
+          <button type='submit'>IOU Tara</button>
+        </div>
+      </form>
+    </div>
+    <p>IOU taraması, limit üzerindeki OC/PrevOC değerlerinin aynı işaretli olduğu mumları dosya bazında listeler. Çoklu CSV seçimini destekler.</p>
+    """
+    return page("app80 - IOU", body, active_tab="iou")
+
+
 def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]]:
     ctype = handler.headers.get("Content-Type")
     if not ctype or "multipart/form-data" not in ctype:
@@ -286,7 +330,12 @@ def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]
             if data is None:
                 content = part.get_content()
                 data = content.encode("utf-8", errors="replace") if isinstance(content, str) else content
-            out[name] = {"filename": filename, "data": data or b""}
+            entry = {"filename": filename, "data": data or b""}
+            container = out.setdefault(name, {"files": []})
+            container.setdefault("files", []).append(entry)
+            if "data" not in container:
+                container["data"] = entry["data"]
+                container["filename"] = entry["filename"]
         else:
             if payload is not None:
                 value = payload.decode("utf-8", errors="replace")
@@ -307,6 +356,8 @@ class App80Handler(BaseHTTPRequestHandler):
             body = render_matrix_index()
         elif self.path == "/converter":
             body = render_converter_index()
+        elif self.path == "/iou":
+            body = render_iou_index()
         else:
             self.send_response(404)
             self.end_headers()
@@ -325,6 +376,8 @@ class App80Handler(BaseHTTPRequestHandler):
                 raise ValueError("CSV dosyası bulunamadı")
             raw = file_obj["data"]
             text = raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
+
+            files_list = file_obj.get("files") or [{"filename": file_obj.get("filename"), "data": file_obj.get("data")}]
 
             if self.path == "/converter":
                 candles = load_candles_from_text(text, ConverterCandle)
@@ -361,6 +414,96 @@ class App80Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Disposition", f"attachment; filename=\"{download_name}\"")
                 self.end_headers()
                 self.wfile.write(data)
+                return
+
+            if self.path == "/iou":
+                sequence = (form.get("sequence", {}).get("value") or "S2").strip() or "S2"
+                tz_value = (form.get("input_tz", {}).get("value") or "UTC-5").strip()
+                limit_raw = (form.get("limit", {}).get("value") or "0").strip()
+                try:
+                    limit_val = float(limit_raw)
+                except Exception:
+                    limit_val = 0.0
+                limit_val = abs(limit_val)
+
+                sections: List[str] = []
+                for entry in files_list:
+                    entry_data = entry.get("data")
+                    if isinstance(entry_data, (bytes, bytearray)):
+                        text_entry = entry_data.decode("utf-8", errors="replace")
+                    else:
+                        text_entry = str(entry_data)
+                    candles_entry = load_candles_from_text(text_entry, CounterCandle)
+                    name = entry.get("filename") or "uploaded.csv"
+                    if not candles_entry:
+                        raise ValueError(f"{name}: Veri boş veya çözümlenemedi")
+
+                    tz_norm = tz_value.upper().replace(" ", "")
+                    tz_label = "UTC-4 -> UTC-4 (+0h)"
+                    if tz_norm in {"UTC-5", "UTC-05", "UTC-05:00", "-05:00"}:
+                        delta = timedelta(hours=1)
+                        candles_entry = [CounterCandle(ts=c.ts + delta, open=c.open, high=c.high, low=c.low, close=c.close) for c in candles_entry]
+                        tz_label = "UTC-5 -> UTC-4 (+1h)"
+
+                    base_idx, base_status = find_start_index(candles_entry, DEFAULT_START_TOD)
+                    report = detect_iou_candles(candles_entry, sequence, limit_val)
+
+                    offset_statuses: List[str] = []
+                    offset_counts: List[str] = []
+                    total_hits = 0
+                    rows: List[str] = []
+                    for item in report.offsets:
+                        off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
+                        status = item.offset_status or "-"
+                        status_label = f"{off_label}: {status}"
+                        if item.missing_steps:
+                            status_label += f" (missing {item.missing_steps})"
+                        offset_statuses.append(status_label)
+
+                        hit_count = len(item.hits)
+                        offset_counts.append(f"{off_label}: {hit_count}")
+                        total_hits += hit_count
+
+                        for hit in item.hits:
+                            ts_s = hit.ts.strftime('%Y-%m-%d %H:%M:%S')
+                            oc_label = format_pip(hit.oc)
+                            prev_label = format_pip(hit.prev_oc)
+                            dc_info = "True" if hit.dc_flag else "False"
+                            if hit.used_dc:
+                                dc_info += " (rule)"
+                            rows.append(
+                                f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
+                                f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"
+                                f"<td>{html.escape(prev_label)}</td><td>{dc_info}</td></tr>"
+                            )
+
+                    info = (
+                        f"<div class='card'>"
+                        f"<h3>{html.escape(name)}</h3>"
+                        f"<div><strong>Data:</strong> {len(candles_entry)} candles</div>"
+                        f"<div><strong>Range:</strong> {html.escape(candles_entry[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles_entry[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
+                        f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
+                        f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
+                        f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
+                        f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
+                        f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
+                        f"<div><strong>Offset IOU sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
+                        f"<div><strong>Toplam IOU:</strong> {total_hits}</div>"
+                        f"</div>"
+                    )
+
+                    if rows:
+                        table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+                    else:
+                        table = "<p>IOU mum bulunamadı.</p>"
+
+                    sections.append(info + table)
+
+                body = "\n".join(sections)
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(page("app80 IOU", body, active_tab="iou"))
                 return
 
             candles = load_candles_from_text(text, CounterCandle)

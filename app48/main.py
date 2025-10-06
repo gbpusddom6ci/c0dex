@@ -2,7 +2,7 @@ import argparse
 import csv
 from dataclasses import dataclass
 from datetime import datetime, time as dtime, timedelta, timezone
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Callable
 
 
 @dataclass
@@ -212,6 +212,38 @@ class SequenceAllocation:
     synthetic: bool
 
 
+@dataclass
+class SignalHit:
+    seq_value: int
+    idx: int
+    ts: datetime
+    oc: float
+    prev_oc: float
+    dc_flag: bool
+    used_dc: bool
+    synthetic: bool
+
+
+@dataclass
+class SignalOffsetResult:
+    offset: int
+    offset_status: str
+    target_ts: Optional[datetime]
+    actual_ts: Optional[datetime]
+    missing_steps: int
+    hits: List[SignalHit]
+
+
+@dataclass
+class SignalReport:
+    sequence: str
+    limit: float
+    base_idx: int
+    base_status: str
+    base_ts: Optional[datetime]
+    offsets: List[SignalOffsetResult]
+
+
 def compute_sequence_allocations(
     candles: List[Candle],
     dc_flags: List[Optional[bool]],
@@ -408,6 +440,94 @@ def compute_offset_alignment(
         start_ref_ts=start_ref_ts,
         missing_steps=0,
         hits=hits,
+    )
+
+
+def _detect_signal_candles(
+    candles: List[Candle],
+    sequence: str,
+    limit: float,
+    condition: Callable[[float, float], bool],
+    empty_error: str,
+) -> SignalReport:
+    if not candles:
+        raise ValueError(empty_error)
+
+    seq_key = (sequence or "S2").upper()
+    if seq_key not in SEQUENCES:
+        seq_key = "S2"
+    seq_values = SEQUENCES[seq_key][:]
+    skip_values = {1, 3} if seq_key == "S1" else {1, 5}
+    threshold = abs(limit)
+
+    start_tod = parse_tod("18:00")
+    base_idx, base_status = find_start_index(candles, start_tod)
+    base_ts = candles[base_idx].ts if 0 <= base_idx < len(candles) else None
+    dc_flags = compute_dc_flags(candles)
+
+    offsets: List[SignalOffsetResult] = []
+    for offset in range(-3, 4):
+        alignment = compute_offset_alignment(candles, dc_flags, base_idx, seq_values, offset, minutes_per_step=48)
+        hits: List[SignalHit] = []
+        for seq_val, alloc in zip(seq_values, alignment.hits):
+            if seq_val in skip_values:
+                continue
+            idx = alloc.idx
+            if idx is None or not (0 <= idx < len(candles)):
+                continue
+            if idx - 1 < 0:
+                continue
+            oc = candles[idx].close - candles[idx].open
+            prev_oc = candles[idx - 1].close - candles[idx - 1].open
+            if abs(oc) < threshold or abs(prev_oc) < threshold:
+                continue
+            if not condition(oc, prev_oc):
+                continue
+            dc_flag = bool(dc_flags[idx]) if 0 <= idx < len(dc_flags) else False
+            hits.append(
+                SignalHit(
+                    seq_value=seq_val,
+                    idx=idx,
+                    ts=candles[idx].ts,
+                    oc=oc,
+                    prev_oc=prev_oc,
+                    dc_flag=dc_flag,
+                    used_dc=alloc.used_dc,
+                    synthetic=alloc.synthetic,
+                )
+            )
+        offsets.append(
+            SignalOffsetResult(
+                offset=offset,
+                offset_status=alignment.offset_status,
+                target_ts=alignment.target_ts,
+                actual_ts=alignment.actual_ts,
+                missing_steps=alignment.missing_steps,
+                hits=hits,
+            )
+        )
+
+    return SignalReport(
+        sequence=seq_key,
+        limit=threshold,
+        base_idx=base_idx,
+        base_status=base_status,
+        base_ts=base_ts,
+        offsets=offsets,
+    )
+
+
+def detect_iou_candles(
+    candles: List[Candle],
+    sequence: str,
+    limit: float,
+) -> SignalReport:
+    return _detect_signal_candles(
+        candles,
+        sequence,
+        limit,
+        condition=lambda oc, prev: oc * prev > 0,
+        empty_error="IOU analizi için mum verisi gerekli",
     )
 
 

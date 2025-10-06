@@ -4,6 +4,7 @@ Bu rehber, projedeki tüm alt uygulamaları (app321, app48, app72, app80, app120
 
 ## 1. En Güncel Özellikler
 
+- **2025-08 – app48/app72/app80/app321 IOU sekmeleri:** Her timeframe için IOU taraması eklendi; formlar çoklu CSV yüklemelerini destekler ve sonuçlar dosya bazlı kartlarda rapor edilir.
 - **2025-08 – app120 IOV/IOU çoklu dosya taraması:** IOV ve IOU web sekmeleri tek seferde birden fazla CSV dosyası kabul eder; her dosyanın sonuçları ayrı kartlarda raporlanır. Limit, dizi ve zaman dilimi ayarı tüm yüklemelere aynı anda uygulanır.
 - **2025-08 – IOU sinyal motoru:** IOV’e paralel olarak IOU (aynı işaretli OC/PrevOC) algılama eklendi.
 - **2025-08 – IOV sinyal motoru:** OC/PrevOC limit eşikleri ve işaret kontrolleriyle “Inverse Offset Value” mumları tanımlandı.
@@ -101,7 +102,8 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
 - **Çoklu Dosya Akışı:** Formdaki tüm CSV’ler aynı sequence/limit/TZ ile işlenir; her dosya için veri kapsamı, offset özetleri ve tablolar ayrı kartlarda sunulur.
 
 ### 4.2 app80 – 80 Dakikalık Analiz
-- **Üç ana modül:** `counter.py`, `main.py` (20→80 converter), `web.py` (port 2180, dört sekme: Analiz, DC List, Matrix, Converter).
+- **Üç ana modül:** `counter.py`, `main.py` (20→80 converter), `web.py` (port 2180, sekmeler: Analiz, DC List, Matrix, IOU Tarama, 20→80 Converter).
+- **IOU Tarama:** Limit ve dizi seçimiyle aynı işaretli OC/PrevOC ikililerini çoklu CSV desteğiyle dosya bazında listeler.
 - **DC Kısıtları:** (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:00 DC olamaz. Önceki DC yasağı geçerlidir.
 - **Converter:** 4 × 20m mum → 1 × 80m mum. Open=ilk open, Close=son close, High/Low blok içindeki max/min.
 - **CLI Örnekleri:**
@@ -111,7 +113,8 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
   ```
 
 ### 4.3 app72 – 72 Dakikalık Analiz
-- **Modüller:** `counter.py`, `main.py` (12→72 converter), `web.py` (port 2172).
+- **Modüller:** `counter.py`, `main.py` (12→72 converter), `web.py` (port 2172; sekmeler: Analiz, DC List, Matrix, IOU Tarama, 12→72 Converter).
+- **IOU Tarama:** Çoklu CSV desteğiyle aynı işaretli OC/PrevOC eşiklerini raporlar; sonuçlar dosya kartlarında gösterilir.
 - **DC Kısıtları (2 haftalık veri varsayımı):** 18:00, Cuma 16:48, (Pazar hariç) 19:12 & 20:24, Cuma 16:00 DC olamaz.
 - **Converter:** 7 adet 12m mum → 1 adet 72m mum (Pazar 18:00 öncesi ve Cumartesi mumları atlanır). Haftasonu boşlukları otomatik geçilir.
 - **CLI Örnekleri:**
@@ -122,6 +125,7 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
 
 ### 4.4 app48 – 48 Dakikalık Analiz
 - **Özellikler:** Sentetik mum ekleme (ilk gün hariç, her gün 18:00 ve 18:48). Web portu 2020.
+- **IOU Tarama:** Limit ve dizi seçimleriyle çoklu CSV analiz eder; sonuç tabloları sentetik/gerçek ayrımını `syn/real` etiketiyle gösterir.
 - **Sentetik Mum Akışı:** 17:12 ve 19:36 gerçek mumları arasına 18:00/18:48 sentetik mumlar eklenir; open/close lineer şekilde setlenir (open = önceki close, close = sonraki open’a doğru interpolasyon, high/low min/max).
 - **DC İstisnası:** 13:12–19:36 arası DC’ler normal kabul edilir.
 - **CLI Örnekleri:**
@@ -132,7 +136,8 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
 - **app48_dc CLI:** DC listesini çıkarır, sentetik mumları `tag=syn` etiketiyle gösterir.
 
 ### 4.5 app321 – 60 Dakikalık Analiz
-- **Port 2019** için web arayüzü; sekmeler: Analiz, DC List, Matrix. (IOV/IOU yok.)
+- **Port 2019** için web arayüzü; sekmeler: Analiz, DC List, Matrix, IOU Tarama.
+- **IOU Tarama:** Multi-upload desteği; limit eşiğini aşan ve aynı işaretli OC/PrevOC değerlerini offset bazında listeler.
 - **DC İstisnası:** 13:00–20:00 arası DC’ler normal mum sayılır.
 - **Tahmin:** Sequence değerleri veri aralığı dışına taşarsa tahmini timestamp raporlanır.
 - **Matrix Sekmesi:** Tüm offset değerleri tek tabloda saat/OC/PrevOC olarak listelenir.
