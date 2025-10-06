@@ -135,8 +135,8 @@ Sayım sırasında diziye ait bir adım bir DC mumuna denk gelirse, o adımın z
   1. **Analiz:** 120m sayım, OC/PrevOC, DC bilgileri.
   2. **DC List:** Tüm DC mumlarının listesi (UTC dönüşümü kullanılarak).
   3. **Matrix:** Tüm offset'ler için tek tabloda zaman/OC/PrevOC özetleri.
-  4. **IOV Tarama:** Limit, dizi ve timezone seçilerek IOV mumlarının offset bazında listelenmesi.
-  5. **IOU Tarama:** Limit, dizi ve timezone seçilerek IOU mumlarının offset bazında listelenmesi.
+  4. **IOV Tarama:** Limit, dizi ve timezone seçilerek IOV mumlarının offset bazında listelenmesi. Aynı anda birden fazla CSV seçilebilir; her dosya ayrı kartta raporlanır.
+  5. **IOU Tarama:** Limit, dizi ve timezone seçilerek IOU mumlarının offset bazında listelenmesi. Çoklu dosya yüklemelerinde tüm sonuçlar dosya bazlı gruplanır.
   6. **60→120 Converter:** 60m CSV yükleyip dönüştürülmüş 120m CSV indirme.
 
 ## Özet
