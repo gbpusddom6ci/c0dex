@@ -120,16 +120,24 @@ Sayım sırasında diziye ait bir adım bir DC mumuna denk gelirse, o adımın z
   4. **20→80 Converter:** 20m CSV yükle, 80m CSV indir.
 
 ### app120
-- app321/app48 mantığındaki 120m sayımı ve 60→120 dönüştürücüyü tek pakette birleşik sunar.
+- app321/app48 mantığındaki 120m sayımı, sinyal taramaları ve 60→120 dönüştürücüyü tek pakette sunar.
 - **Sayım (CLI: `python3 -m app120.counter`):**
   - 120 dakikalık mumları 18:00 başlangıcına göre sayar; DC istisnası yoktur.
   - OC/PrevOC bilgilerini aynı formatta raporlar; tahmin satırları `OC=- PrevOC=-` şeklinde etiketlenir.
 - **Dönüştürücü (CLI: `python3 -m app120`):** 60m UTC-5 verisini UTC-4 120m mumlarına çevirir; gereksiz trailing sıfırları temizler. Cumartesi mumları ile Pazar 18:00 öncesi mumlar yok sayılır; Cuma 16:00 kapanışından sonra doğrudan Pazar 18:00 açılış mumuna geçilir.
-- **Web Arayüzü (`python3 -m app120.web`, port: 2120):** Dört sekme içerir:
+- **IOV/IOU sinyal mantığı:**
+  - Limit değeri kullanıcı girdisi olup mutlak değer üzerinden değerlendirilir; `|OC|` ve `|PrevOC|` limitten küçükse mum sinyale girmez.
+  - S1 dizisinde 1 ve 3, S2 dizisinde 1 ve 5 sıraları her zaman sinyal taramasından hariç tutulur (hem IOV hem IOU için).
+  - DC kapsayıcı kuralıyla eşleşen sinyaller sonuç tablolarında `(rule)` etiketiyle gösterilir.
+  - **IOV (Inverse Offset Value):** Limit üzerindeki OC ve PrevOC değerleri zıt işaret taşımalıdır (biri +, diğeri −).
+  - **IOU (Inline Offset Unity):** Limit üzerindeki OC ve PrevOC değerleri aynı işareti taşımalıdır (ikisi + veya ikisi −).
+- **Web Arayüzü (`python3 -m app120.web`, port: 2120):** Altı sekme içerir:
   1. **Analiz:** 120m sayım, OC/PrevOC, DC bilgileri.
   2. **DC List:** Tüm DC mumlarının listesi (UTC dönüşümü kullanılarak).
   3. **Matrix:** Tüm offset'ler için tek tabloda zaman/OC/PrevOC özetleri.
-  4. **60→120 Converter:** 60m CSV yükleyip dönüştürülmüş 120m CSV indirme.
+  4. **IOV Tarama:** Limit, dizi ve timezone seçilerek IOV mumlarının offset bazında listelenmesi.
+  5. **IOU Tarama:** Limit, dizi ve timezone seçilerek IOU mumlarının offset bazında listelenmesi.
+  6. **60→120 Converter:** 60m CSV yükleyip dönüştürülmüş 120m CSV indirme.
 
 ## Özet
 - Giriş CSV’si düzgün formatlanmış olmalı ve zorunlu kolonları içermelidir.
@@ -149,5 +157,6 @@ Sayım sırasında diziye ait bir adım bir DC mumuna denk gelirse, o adımın z
   - **app72:** 12m → 72m (7 × 12m ≈ 72m, offset mantığıyla)
   - **app80:** 20m → 80m (4 × 20m = 80m)
   - **app120:** 60m → 120m (2 × 60m = 120m)
+- **Sinyal Özeti:** app120 IOV/IOU sekmeleri, limit eşiklerine göre OC/PrevOC değerlerini kontrol ederek offset bazında zıt/aynı işaretli mumları raporlar; S1 için 1 ve 3, S2 için 1 ve 5 sinyal dışıdır.
 
 Bu rehber, uygulamaların geliştirme ve kullanımında referans kabul edilmelidir.
