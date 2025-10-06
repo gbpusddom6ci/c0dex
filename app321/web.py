@@ -336,6 +336,8 @@ class AppHandler(BaseHTTPRequestHandler):
             self.wfile.write(render_dc_index())
         elif self.path.startswith("/matrix"):
             self.wfile.write(render_matrix_index())
+        elif self.path.startswith("/iou"):
+            self.wfile.write(render_iou_index())
         else:
             self.wfile.write(render_index())
 
