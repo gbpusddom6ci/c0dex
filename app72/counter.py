@@ -2,10 +2,7 @@ import argparse
 import csv
 from dataclasses import dataclass
 from datetime import datetime, time as dtime, timedelta
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
-
-if TYPE_CHECKING:  # pragma: no cover
-    from .news import NewsEvent
+from typing import List, Optional, Tuple, Dict, Callable
 
 
 MINUTES_PER_STEP = 72
@@ -207,16 +204,6 @@ class SignalHit:
     prev_oc: float
     dc_flag: bool
     used_dc: bool
-    news: List["SignalNews"]
-
-
-@dataclass
-class SignalNews:
-    time: datetime
-    impact: str
-    title: str
-    country: str
-    url: str
 
 
 @dataclass
@@ -529,7 +516,6 @@ def _detect_signal_candles(
     limit: float,
     condition: Callable[[float, float], bool],
     empty_error: str,
-    news_lookup: Optional[Callable[[datetime, datetime], List["NewsEvent"]]] = None,
 ) -> SignalReport:
     if not candles:
         raise ValueError(empty_error)
@@ -564,25 +550,6 @@ def _detect_signal_candles(
             if not condition(oc, prev_oc):
                 continue
             dc_flag = bool(dc_flags[idx]) if 0 <= idx < len(dc_flags) else False
-            news_items: List[SignalNews] = []
-            if news_lookup is not None:
-                start_ts = candles[idx].ts
-                end_ts = start_ts + timedelta(minutes=MINUTES_PER_STEP)
-                try:
-                    events = news_lookup(start_ts, end_ts)
-                except Exception:
-                    events = []
-                for event in events or []:
-                    news_items.append(
-                        SignalNews(
-                            time=event.start,
-                            impact=event.impact,
-                            title=event.title,
-                            country=event.country,
-                            url=event.url,
-                        )
-                    )
-
             hits.append(
                 SignalHit(
                     seq_value=seq_val,
@@ -592,7 +559,6 @@ def _detect_signal_candles(
                     prev_oc=prev_oc,
                     dc_flag=dc_flag,
                     used_dc=alloc.used_dc,
-                    news=news_items,
                 )
             )
         offsets.append(
@@ -620,7 +586,6 @@ def detect_iou_candles(
     candles: List[Candle],
     sequence: str,
     limit: float,
-    news_lookup: Optional[Callable[[datetime, datetime], List["NewsEvent"]]] = None,
 ) -> SignalReport:
     return _detect_signal_candles(
         candles,
@@ -628,7 +593,6 @@ def detect_iou_candles(
         limit,
         condition=lambda oc, prev: oc * prev > 0,
         empty_error="IOU analizi için mum verisi gerekli",
-        news_lookup=news_lookup,
     )
 
 
