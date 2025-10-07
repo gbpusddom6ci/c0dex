@@ -26,6 +26,7 @@ from .main import (
     convert_12m_to_72m,
     format_price,
 )
+from .news import NewsService
 from email.parser import BytesParser
 from email.policy import default as email_default
 from datetime import timedelta
@@ -304,6 +305,7 @@ def render_iou_index() -> bytes:
       </form>
     </div>
     <p>IOU taraması, limit üstündeki OC/PrevOC ikililerinden aynı işaret taşıyanları dosya bazlı gösterir. Birden fazla CSV seçebilirsin.</p>
+    <p>Her IOU mumu için ForexFactory (NY TZ) yüksek/orta impact haberleri otomatik not olarak eklenir.</p>
     """
     return page("app72 - IOU", body, active_tab="iou")
 
@@ -426,6 +428,7 @@ class App72Handler(BaseHTTPRequestHandler):
                     limit_val = 0.0
                 limit_val = abs(limit_val)
 
+                news_service = NewsService()
                 sections: List[str] = []
                 for entry in files_list:
                     entry_data = entry.get("data")
@@ -446,7 +449,12 @@ class App72Handler(BaseHTTPRequestHandler):
                         tz_label = "UTC-5 -> UTC-4 (+1h)"
 
                     base_idx, base_status = find_start_index(candles_entry, DEFAULT_START_TOD)
-                    report = detect_iou_candles(candles_entry, sequence, limit_val)
+                    report = detect_iou_candles(
+                        candles_entry,
+                        sequence,
+                        limit_val,
+                        news_lookup=news_service.lookup_range,
+                    )
 
                     offset_statuses: List[str] = []
                     offset_counts: List[str] = []
@@ -471,10 +479,26 @@ class App72Handler(BaseHTTPRequestHandler):
                             dc_info = "True" if hit.dc_flag else "False"
                             if hit.used_dc:
                                 dc_info += " (rule)"
+                            if hit.news:
+                                news_bits = []
+                                for ev in hit.news:
+                                    impact_label = ev.impact.upper()
+                                    time_label = ev.time.strftime('%m-%d %H:%M')
+                                    text = f"{impact_label}: {ev.title} ({ev.country}) @ {time_label}"
+                                    escaped_text = html.escape(text)
+                                    if ev.url:
+                                        news_bits.append(
+                                            f"<a href='{html.escape(ev.url, quote=True)}' target='_blank' rel='noreferrer'>{escaped_text}</a>"
+                                        )
+                                    else:
+                                        news_bits.append(escaped_text)
+                                news_cell = "<br/>".join(news_bits)
+                            else:
+                                news_cell = "-"
                             rows.append(
                                 f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
                                 f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"
-                                f"<td>{html.escape(prev_label)}</td><td>{dc_info}</td></tr>"
+                                f"<td>{html.escape(prev_label)}</td><td>{dc_info}</td><td>{news_cell}</td></tr>"
                             )
 
                     info = (
@@ -489,11 +513,12 @@ class App72Handler(BaseHTTPRequestHandler):
                         f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
                         f"<div><strong>Offset IOU sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
                         f"<div><strong>Toplam IOU:</strong> {total_hits}</div>"
+                        f"<div><strong>News kaynağı:</strong> ForexFactory (High/Medium)</div>"
                         f"</div>"
                     )
 
                     if rows:
-                        table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+                        table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th><th>News</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
                     else:
                         table = "<p>IOU mum bulunamadı.</p>"
 
