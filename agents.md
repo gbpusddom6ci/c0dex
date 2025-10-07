@@ -79,9 +79,9 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
 Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasına sabitlemesini engeller. Eğer 20:00 ve 00:00 aynı anda DC ise sayım 22:00 → 02:00 → 04:00 diye devam eder; yani her pozitif offset “bir sonraki DC olmayan mumu” seçer.
 
 **Uygulama Bazlı Notlar:**
-- `app321` (60m) pozitif offset başlangıçlarını DC olmayan mumlara kaydırır; 13:00–20:00 arasındaki saatler zaten DC istisnası olarak normal sayıldığından, bu aralıkta gelen DC’ler offset’i etkilemez.
+- `app321` (60m) pozitif offset başlangıçlarını DC olmayan mumlara kaydırır; DC istisnası yalnızca Pazartesi–Cumartesi 13:00 ≤ saat < 20:00 için geçerlidir. Pazar günleri veya 20:00 mumu istisna dışıdır.
 - `app72` ve `app80` (72m / 80m) aynı mantığı kendi dakika adımları ile uygular. Pozitif offset teorik hedefi DC ise sayaç uygun gerçek muma ilerleyip diziyi 72/80 dakikalık farkla korur.
-- `app48` (48m) sentetik mumlar üretir; pozitif offset hesaplaması yalnızca gerçek DC sayılan (13:12–19:36 dışındaki) mumları atlar. Sentetik saatlerdeki DC istisnası korunur, bu sayede offset sütunları yine çakışmaz.
+- `app48` (48m) sentetik mumlar üretir; pozitif offset hesaplaması yalnızca gerçek DC sayılan (Pazartesi–Cumartesi 13:12 ≤ saat < 19:36) mumları atlar. Pazar günleri ve 19:36 dahilindeki mumlar normal DC kontrolüne tabidir. Sentetik saatlerdeki DC istisnası korunur, bu sayede offset sütunları yine çakışmaz.
 - Negatif offsetlerde veri zaten 18:00’dan önce bulunmadığından ekstra işleme gerek yoktur; mevcut tahmin mantığı olduğu gibi bırakılır.
 
 ### 3.5 OC / PrevOC
