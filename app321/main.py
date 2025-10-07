@@ -243,8 +243,10 @@ def compute_sequence_allocations(
             cur_idx += 1
             flag_val = dc_flags[cur_idx]
             is_dc = bool(flag_val) if flag_val is not None else False
-            tod = candles[cur_idx].ts.time()
-            dc_exception = (tod >= dtime(13, 0)) and (tod <= dtime(20, 0))
+            candle_ts = candles[cur_idx].ts
+            tod = candle_ts.time()
+            weekday = candle_ts.weekday()
+            dc_exception = (tod >= dtime(13, 0)) and (tod <= dtime(20, 0)) and weekday != 6
             if is_dc and not dc_exception:
                 if counted == steps_needed - 1:
                     last_dc_idx = cur_idx
