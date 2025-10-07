@@ -70,6 +70,14 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
 - Offset değerleri `-3..+3` arasıdır; timeframe dakika değeriyle çarpılarak hedef zaman belirlenir.
 - Hedef mum bulunamazsa (veri yoksa) tahmini saatler `pred` etiketiyle raporlanır.
 
+**Pozitif Offset DC Akışı:** 18:00 baz mumundan itibaren offset adımları, sequence sayımındaki gibi DC olmayan mumlar üzerinden ilerletilir. Örnek akış (`jun01.csv`):
+
+- `+1` offset: 18:00 sonrası ilk gerçek mum 20:00 olduğundan başlangıç 20:00.
+- `+2` offset: 22:00 mumu DC olduğu için sayılmaz; sıradaki gerçek mum 00:00 olur.
+- `+3` offset: +2’nin devamında bir sonraki gerçek mum 02:00’dır.
+
+Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasına sabitlemesini engeller. Eğer 20:00 ve 00:00 aynı anda DC ise sayım 22:00 → 02:00 → 04:00 diye devam eder; yani her pozitif offset “bir sonraki DC olmayan mumu” seçer.
+
 ### 3.5 OC / PrevOC
 - **OC:** `Close - Open` (her gerçek mum için raporlanır, `+/-` işaretli 5 hane).
 - **PrevOC:** Bir önceki mumun OC değeri; yoksa `-`.
