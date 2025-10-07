@@ -321,6 +321,34 @@ def compute_sequence_allocations(
     return allocations
 
 
+def _is_effective_dc(candles: List[Candle], dc_flags: List[Optional[bool]], idx: int) -> bool:
+    flag = dc_flags[idx] if 0 <= idx < len(dc_flags) else None
+    if not flag:
+        return False
+    tod = candles[idx].ts.time()
+    return not (dtime(13, 12) <= tod <= dtime(19, 36))
+
+
+def _advance_positive_offset_start(
+    candles: List[Candle],
+    dc_flags: List[Optional[bool]],
+    base_idx: int,
+    offset: int,
+) -> Tuple[Optional[int], int]:
+    if offset <= 0:
+        return base_idx, 0
+    steps_taken = 0
+    cursor = base_idx
+    while cursor + 1 < len(candles) and steps_taken < offset:
+        cursor += 1
+        if _is_effective_dc(candles, dc_flags, cursor):
+            continue
+        steps_taken += 1
+    if steps_taken == offset and 0 <= cursor < len(candles):
+        return cursor, steps_taken
+    return None, steps_taken
+
+
 @dataclass
 class OffsetComputation:
     target_ts: datetime
@@ -388,6 +416,44 @@ def compute_offset_alignment(
     hits: List[SequenceAllocation] = [SequenceAllocation(None, None, False, False) for _ in seq_values]
     actual_ts: Optional[datetime] = None
     missing_steps = 0
+
+    if offset > 0:
+        start_idx_counted, steps_taken = _advance_positive_offset_start(candles, dc_flags, base_idx, offset)
+        if start_idx_counted is None or start_idx_counted >= len(candles):
+            missing_steps = max(0, offset - steps_taken)
+            return OffsetComputation(
+                target_ts=target_ts,
+                offset_status=offset_status,
+                start_idx=None,
+                actual_ts=None,
+                start_ref_ts=start_ref_ts,
+                missing_steps=missing_steps,
+                hits=hits,
+            )
+
+        start_idx = start_idx_counted
+        actual_ts = candles[start_idx].ts
+        start_ref_ts = actual_ts.replace(second=0, microsecond=0)
+        delta_minutes = int((actual_ts - target_ts).total_seconds() // 60)
+        if delta_minutes < 0:
+            delta_minutes = 0
+        missing_steps = max(0, delta_minutes // minutes_per_step)
+        hits = compute_sequence_allocations(
+            candles,
+            dc_flags,
+            start_idx,
+            seq_values,
+            force_first_non_dc=True,
+        )
+        return OffsetComputation(
+            target_ts=target_ts,
+            offset_status=offset_status,
+            start_idx=start_idx,
+            actual_ts=actual_ts,
+            start_ref_ts=start_ref_ts,
+            missing_steps=missing_steps,
+            hits=hits,
+        )
 
     if start_idx is not None and 0 <= start_idx < len(candles):
         start_idx = next_non_dc(start_idx)
