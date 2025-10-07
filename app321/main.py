@@ -246,7 +246,7 @@ def compute_sequence_allocations(
             candle_ts = candles[cur_idx].ts
             tod = candle_ts.time()
             weekday = candle_ts.weekday()
-            dc_exception = (tod >= dtime(13, 0)) and (tod <= dtime(20, 0)) and weekday != 6
+            dc_exception = (tod >= dtime(13, 0)) and (tod < dtime(20, 0)) and weekday != 6
             if is_dc and not dc_exception:
                 if counted == steps_needed - 1:
                     last_dc_idx = cur_idx
