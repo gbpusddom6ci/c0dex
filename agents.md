@@ -63,6 +63,7 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
 - app120: İstisna yok; yalnızca kapsayıcı kural uygulanır. Cuma 16:00 hafta kapanışı DC sayılmaz.
 
 **Kapsayıcı Kural:** Bir sequence adımı DC’ye denk gelirse zaman damgası o DC mumuna yazılır.
+**Pozitif Offset İstisnası:** Offset +1, +2 ve +3 için başlangıç mumu DC ise ilgili offset özelinde normal mum gibi sayılır (DC kuralı uygulanmaz).
 
 ### 3.4 Offset Sistemi
 - Başlangıç noktası: yakalanan ilk 18:00 mumu.

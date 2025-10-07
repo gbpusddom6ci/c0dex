@@ -249,6 +249,7 @@ def compute_sequence_allocations(
     dc_flags: List[Optional[bool]],
     start_idx: int,
     seq_values: List[int],
+    force_first_non_dc: bool = False,
 ) -> List[SequenceAllocation]:
     if not seq_values:
         return []
@@ -264,10 +265,13 @@ def compute_sequence_allocations(
         return not (dtime(13, 12) <= tod <= dtime(19, 36))
 
     first_candle = candles[start_idx]
+    first_used_dc = is_dc_candle(start_idx)
+    if force_first_non_dc:
+        first_used_dc = False
     allocations[0] = SequenceAllocation(
         idx=start_idx,
         ts=first_candle.ts,
-        used_dc=is_dc_candle(start_idx),
+        used_dc=first_used_dc,
         synthetic=getattr(first_candle, "synthetic", False),
     )
 
@@ -376,7 +380,7 @@ def compute_offset_alignment(
     if start_idx is not None and 0 <= start_idx < len(candles):
         actual_ts = candles[start_idx].ts
         start_ref_ts = actual_ts.replace(second=0, microsecond=0)
-        hits = compute_sequence_allocations(candles, dc_flags, start_idx, seq_values)
+        hits = compute_sequence_allocations(candles, dc_flags, start_idx, seq_values, force_first_non_dc=offset > 0)
         return OffsetComputation(
             target_ts=target_ts,
             offset_status=offset_status,
@@ -413,7 +417,7 @@ def compute_offset_alignment(
                     value_to_pos[v] = len(seq_compute)
                     seq_compute.append(v)
 
-        allocations_compute = compute_sequence_allocations(candles, dc_flags, start_idx, seq_compute)
+        allocations_compute = compute_sequence_allocations(candles, dc_flags, start_idx, seq_compute, force_first_non_dc=offset > 0)
         value_to_alloc = {val: allocations_compute[idx] for idx, val in enumerate(seq_compute)}
         hits = []
         for v in seq_values:
