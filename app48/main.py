@@ -294,7 +294,7 @@ def compute_sequence_allocations(
             candle_ts = candles[cur_idx].ts
             tod = candle_ts.time()
             weekday = candle_ts.weekday()
-            dc_exception = (dtime(13, 12) <= tod <= dtime(19, 36)) and weekday != 6
+            dc_exception = (dtime(13, 12) <= tod < dtime(19, 36)) and weekday != 6
             if is_dc and not dc_exception:
                 if counted == steps_needed - 1:
                     dc_candidate = cur_idx
@@ -327,8 +327,12 @@ def _is_effective_dc(candles: List[Candle], dc_flags: List[Optional[bool]], idx:
     flag = dc_flags[idx] if 0 <= idx < len(dc_flags) else None
     if not flag:
         return False
-    tod = candles[idx].ts.time()
-    return not (dtime(13, 12) <= tod <= dtime(19, 36))
+    candle_ts = candles[idx].ts
+    tod = candle_ts.time()
+    weekday = candle_ts.weekday()
+    if weekday != 6 and (dtime(13, 12) <= tod < dtime(19, 36)):
+        return False
+    return True
 
 
 def _advance_positive_offset_start(
