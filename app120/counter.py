@@ -329,14 +329,18 @@ def compute_offset_alignment(
 ) -> OffsetComputation:
 
     def next_non_dc(idx: Optional[int]) -> Optional[int]:
-        if idx is None or offset <= 0:
+        if idx is None:
+            return None
+        if offset <= 0:
             return idx
         cursor = idx
+        first = True
         while cursor < len(candles):
             flag = dc_flags[cursor] if 0 <= cursor < len(dc_flags) else None
-            if not flag:
+            if not flag or first:
                 return cursor
             cursor += 1
+            first = False
         return None
 
     start_idx, target_ts, offset_status = determine_offset_start(candles, base_idx, offset)
