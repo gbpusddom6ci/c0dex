@@ -220,6 +220,7 @@ def compute_sequence_allocations(
     start_idx: int,
     seq_values: List[int],
     force_first_non_dc: bool = False,
+    start_dc_step_bonus: bool = False,
 ) -> List[SequenceAllocation]:
     if not seq_values:
         return []
@@ -243,6 +244,7 @@ def compute_sequence_allocations(
 
     prev_idx = start_idx
     prev_val = seq_values[0]
+    bonus_pending = start_dc_step_bonus and bool(dc_flags[start_idx])
     for i in range(1, len(seq_values)):
         cur_val = seq_values[i]
         if cur_val <= prev_val:
@@ -250,6 +252,9 @@ def compute_sequence_allocations(
             prev_val = cur_val
             continue
         steps_needed = cur_val - prev_val
+        if bonus_pending and steps_needed > 0 and prev_idx == start_idx:
+            steps_needed += 1
+            bonus_pending = False
         cur_idx = prev_idx
         counted = 0
         last_dc_idx: Optional[int] = None
@@ -366,7 +371,17 @@ def compute_offset_alignment(
             )
         actual_ts = candles[start_idx].ts
         start_ref_ts = actual_ts.replace(second=0, microsecond=0)
-        hits = compute_sequence_allocations(candles, dc_flags, start_idx, seq_values, force_first_non_dc=offset > 0)
+        start_dc_bonus = False
+        if offset > 0 and 0 <= start_idx < len(dc_flags):
+            start_dc_bonus = bool(dc_flags[start_idx])
+        hits = compute_sequence_allocations(
+            candles,
+            dc_flags,
+            start_idx,
+            seq_values,
+            force_first_non_dc=offset > 0,
+            start_dc_step_bonus=start_dc_bonus,
+        )
         return OffsetComputation(
             target_ts=target_ts,
             offset_status=offset_status,
@@ -413,7 +428,17 @@ def compute_offset_alignment(
                     value_to_pos[v] = len(seq_compute)
                     seq_compute.append(v)
 
-        allocations_compute = compute_sequence_allocations(candles, dc_flags, start_idx, seq_compute, force_first_non_dc=offset > 0)
+        start_dc_bonus = False
+        if offset > 0 and 0 <= start_idx < len(dc_flags):
+            start_dc_bonus = bool(dc_flags[start_idx])
+        allocations_compute = compute_sequence_allocations(
+            candles,
+            dc_flags,
+            start_idx,
+            seq_compute,
+            force_first_non_dc=offset > 0,
+            start_dc_step_bonus=start_dc_bonus,
+        )
         value_to_alloc = {val: allocations_compute[idx] for idx, val in enumerate(seq_compute)}
         hits = []
         for v in seq_values:
