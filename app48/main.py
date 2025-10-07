@@ -368,6 +368,18 @@ def compute_offset_alignment(
     offset: int,
     minutes_per_step: int = 48,
 ) -> OffsetComputation:
+
+    def next_non_dc(idx: Optional[int]) -> Optional[int]:
+        if idx is None or offset <= 0:
+            return idx
+        cursor = idx
+        while cursor < len(candles):
+            flag = dc_flags[cursor] if 0 <= cursor < len(dc_flags) else None
+            if not flag:
+                return cursor
+            cursor += 1
+        return None
+
     start_idx, target_ts, offset_status = determine_offset_start(candles, base_idx, offset, minutes_per_step=minutes_per_step)
     base_ts = candles[base_idx].ts.replace(second=0, microsecond=0)
     if target_ts is None:
@@ -378,6 +390,17 @@ def compute_offset_alignment(
     missing_steps = 0
 
     if start_idx is not None and 0 <= start_idx < len(candles):
+        start_idx = next_non_dc(start_idx)
+        if start_idx is None or start_idx >= len(candles):
+            return OffsetComputation(
+                target_ts=target_ts,
+                offset_status=offset_status,
+                start_idx=None,
+                actual_ts=None,
+                start_ref_ts=start_ref_ts,
+                missing_steps=missing_steps,
+                hits=hits,
+            )
         actual_ts = candles[start_idx].ts
         start_ref_ts = actual_ts.replace(second=0, microsecond=0)
         hits = compute_sequence_allocations(candles, dc_flags, start_idx, seq_values, force_first_non_dc=offset > 0)
@@ -399,7 +422,17 @@ def compute_offset_alignment(
             break
 
     if after_idx is not None and 0 <= after_idx < len(candles):
-        start_idx = after_idx
+        start_idx = next_non_dc(after_idx)
+        if start_idx is None or start_idx >= len(candles):
+            return OffsetComputation(
+                target_ts=target_ts,
+                offset_status=offset_status,
+                start_idx=None,
+                actual_ts=None,
+                start_ref_ts=start_ref_ts,
+                missing_steps=0,
+                hits=hits,
+            )
         actual_ts = candles[start_idx].ts
         start_ref_ts = actual_ts.replace(second=0, microsecond=0)
         delta_minutes = int((actual_ts - target_ts).total_seconds() // 60)
