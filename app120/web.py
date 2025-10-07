@@ -27,6 +27,10 @@ from .main import (
     convert_60m_to_120m,
     format_price,
 )
+from .forexfactory import (
+    get_events as get_forexfactory_events,
+    NewsFetchResult,
+)
 from email.parser import BytesParser
 from email.policy import default as email_default
 from datetime import timedelta
@@ -84,6 +88,89 @@ def format_pip(delta: Optional[float]) -> str:
     if delta is None:
         return "-"
     return f"{delta:+.5f}"
+
+
+def render_news_card(
+    result: NewsFetchResult,
+    seq_values: List[int],
+    hits: List,
+    window_minutes: int,
+) -> str:
+    window = max(window_minutes, 0)
+    parts = ["<div class='card'>", "<h3>ForexFactory Haberleri</h3>"]
+
+    meta_tokens = []
+    if result.fetched_at:
+        meta_tokens.append(f"çekim {result.fetched_at.strftime('%Y-%m-%d %H:%M:%S')}")
+    if result.source:
+        meta_tokens.append(f"kaynak: {result.source}")
+    if result.cache_hit:
+        meta_tokens.append("önbellek kullanıldı")
+    if window:
+        meta_tokens.append(f"yakınlık ±{window} dk")
+    if meta_tokens:
+        parts.append(f"<div><small>{html.escape(', '.join(meta_tokens))}</small></div>")
+
+    for warning in result.warnings:
+        parts.append(f"<div><small>{html.escape(warning)}</small></div>")
+
+    if result.events:
+        header = (
+            "<table><thead><tr>"
+            "<th>Zaman</th><th>Ülke</th><th>Impact</th><th>Başlık</th>"
+            "<th>Tahmin</th><th>Önceki</th><th>Seq Yakın</th>"
+            "</tr></thead><tbody>"
+        )
+        rows: List[str] = []
+        paired = list(zip(seq_values, hits))
+        for event in result.events:
+            matches: List[str] = []
+            for seq_val, hit in paired:
+                ts = getattr(hit, "ts", None)
+                if ts is None:
+                    continue
+                delta_minutes = abs((event.time - ts).total_seconds()) / 60.0
+                if window and delta_minutes > window:
+                    continue
+                if delta_minutes < 0.5:
+                    match_label = f"{seq_val} (aynı)"
+                else:
+                    direction = "önce" if event.time < ts else "sonra"
+                    match_label = f"{seq_val} ({int(round(delta_minutes))} dk {direction})"
+                matches.append(match_label)
+            match_cell = ", ".join(matches) if matches else "-"
+
+            impact_text = event.impact or "-"
+            impact_lower = impact_text.lower()
+            if impact_lower == "high":
+                impact_cell = f"<strong>{html.escape(impact_text)}</strong>"
+            elif impact_lower == "medium":
+                impact_cell = f"<span>{html.escape(impact_text)}</span>"
+            else:
+                impact_cell = html.escape(impact_text)
+
+            rows.append(
+                "<tr>"
+                f"<td>{html.escape(event.time.strftime('%Y-%m-%d %H:%M'))}</td>"
+                f"<td>{html.escape(event.country or '-')}</td>"
+                f"<td>{impact_cell}</td>"
+                f"<td>{html.escape(event.title or '-')}</td>"
+                f"<td>{html.escape(event.forecast or '-')}</td>"
+                f"<td>{html.escape(event.previous or '-')}</td>"
+                f"<td>{html.escape(match_cell)}</td>"
+                "</tr>"
+            )
+
+        parts.append(header + "".join(rows) + "</tbody></table>")
+    else:
+        message = "Seçilen aralıkta haber bulunamadı."
+        parts.append(f"<p>{html.escape(message)}</p>")
+
+    if result.error:
+        parts.append(f"<div><small>Hata: {html.escape(result.error)}</small></div>")
+
+    parts.append("</div>")
+    return "".join(parts)
 
 
 def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
@@ -170,6 +257,26 @@ def render_analyze_index() -> bytes:
           <div>
             <label>DC Göster</label>
             <input type='checkbox' name='show_dc' checked />
+          </div>
+          <div>
+            <label>ForexFactory Haberleri</label>
+            <input type='checkbox' name='include_news' checked />
+          </div>
+          <div>
+            <label>Min Impact</label>
+            <select name='news_impact'>
+              <option value='Low'>Low+</option>
+              <option value='Medium' selected>Medium+</option>
+              <option value='High'>High</option>
+            </select>
+          </div>
+          <div>
+            <label>Ülkeler (virgül)</label>
+            <input type='text' name='news_countries' value='USD,EUR,GBP' />
+          </div>
+          <div>
+            <label>Yakınlık (dk)</label>
+            <input type='number' name='news_window' value='120' min='0' step='30' />
           </div>
         </div>
         <div style='margin-top:12px;'>
@@ -476,6 +583,24 @@ class App120Handler(BaseHTTPRequestHandler):
             if tz_shift:
                 tz_label = "UTC-5 -> UTC-4 (+1h)"
 
+            if self.path == "/analyze":
+                include_news = "include_news" in form
+                news_impact = (form.get("news_impact", {}).get("value") or "Medium").strip()
+                news_countries_raw = (form.get("news_countries", {}).get("value") or "").strip()
+                news_window_raw = (form.get("news_window", {}).get("value") or "120").strip()
+            else:
+                include_news = False
+                news_impact = "Medium"
+                news_countries_raw = ""
+                news_window_raw = "0"
+
+            try:
+                news_window = int(news_window_raw)
+            except Exception:
+                news_window = 120
+            if news_window < 0:
+                news_window = 0
+
             def load_counter_candles(entry: Dict[str, Any]) -> List[CounterCandle]:
                 text_local = decode_entry(entry)
                 try:
@@ -607,6 +732,32 @@ class App120Handler(BaseHTTPRequestHandler):
                     f"<div><strong>Sequence:</strong> {html.escape(sequence)} {html.escape(str(seq_values))}</div>",
                 ]
 
+                news_html = ""
+                if include_news:
+                    impact_filter = (news_impact or "Medium").strip() or "Medium"
+                    impact_display = impact_filter.title()
+                    country_tokens = [token.strip() for token in news_countries_raw.split(',')] if news_countries_raw else []
+                    country_filters = [token for token in country_tokens if token]
+                    try:
+                        news_result = get_forexfactory_events(
+                            candles[0].ts,
+                            candles[-1].ts,
+                            min_impact=impact_filter,
+                            countries=country_filters or None,
+                            pad_minutes=news_window,
+                        )
+                    except Exception as exc:
+                        message = f"Haber verisi alınamadı: {exc}"
+                        news_html = (
+                            "<div class='card'><h3>ForexFactory Haberleri</h3>"
+                            f"<p>{html.escape(message)}</p></div>"
+                        )
+                    else:
+                        info_lines.append(
+                            f"<div><strong>Haberler:</strong> {len(news_result.events)} kayıt (impact ≥ {html.escape(impact_display)})</div>"
+                        )
+                        news_html = render_news_card(news_result, seq_values, alignment.hits, news_window)
+
                 rows_html = []
                 for v, hit in zip(seq_values, alignment.hits):
                     idx = hit.idx
@@ -671,6 +822,8 @@ class App120Handler(BaseHTTPRequestHandler):
                 header += "</tr>"
                 table = f"<table><thead>{header}</thead><tbody>{''.join(rows_html)}</tbody></table>"
                 body = "<div class='card'>" + "".join(info_lines) + "</div>" + table
+                if news_html:
+                    body += news_html
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
