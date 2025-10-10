@@ -5,8 +5,7 @@ import io
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
-from functools import lru_cache
-from typing import List, Optional, Dict, Any, Type
+from typing import List, Optional, Dict, Any, Type, Tuple
 
 from favicon import render_head_links, try_load_asset
 
@@ -37,20 +36,61 @@ from datetime import datetime, timedelta
 
 
 NEWS_FILE_PATTERN = "*.json"
+NEWS_DIR_NAME = "economic_calendar"
+_NEWS_CACHE: List[Dict[str, Any]] = []
+_NEWS_CACHE_KEY: Optional[Tuple[Tuple[str, int, int], ...]] = None
 
 
-@lru_cache(maxsize=1)
+def _gather_news_files(base_dir: Path) -> List[Path]:
+    """
+    Collects news JSON files from the dedicated economic_calendar directory.
+    Falls back to root-level JSON files for backwards compatibility.
+    """
+    candidates: List[Path] = []
+    calendar_dir = base_dir / NEWS_DIR_NAME
+    if calendar_dir.exists():
+        candidates.extend(p for p in calendar_dir.glob(NEWS_FILE_PATTERN) if p.is_file())
+    candidates.extend(p for p in base_dir.glob(NEWS_FILE_PATTERN) if p.is_file())
+    seen = set()
+    unique: List[Path] = []
+    for path in sorted(candidates):
+        key = path.resolve()
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
+
+
+def _build_news_cache_key(files: List[Path]) -> Tuple[Tuple[str, int, int], ...]:
+    parts: List[Tuple[str, int, int]] = []
+    for path in files:
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            continue
+        parts.append((str(path.resolve()), int(stat.st_mtime_ns), stat.st_size))
+    return tuple(parts)
+
+
 def load_news_events() -> List[Dict[str, Any]]:
     """
-    Loads ForexFactory-like news events from JSON files located at the project root.
-    Files must expose a top-level \"days\" list with \"events\" entries. Each event
-    needs a date (YYYY-MM-DD), 24h time (HH:MM), and a title. Additional files placed
-    alongside the existing data will be picked up automatically.
+    Loads ForexFactory-like news events from JSON files located at the project root
+    or within the economic_calendar directory. Files must expose a top-level \"days\"
+    list with \"events\" entries. Each event needs a date (YYYY-MM-DD), 24h time
+    (HH:MM), and a title. Additional files placed alongside the existing data will
+    be picked up automatically.
     """
     base_dir = Path(__file__).resolve().parent.parent
+    files = _gather_news_files(base_dir)
+    cache_key = _build_news_cache_key(files)
+
+    global _NEWS_CACHE, _NEWS_CACHE_KEY
+    if cache_key == _NEWS_CACHE_KEY:
+        return _NEWS_CACHE
+
     events: List[Dict[str, Any]] = []
 
-    for path in sorted(base_dir.glob(NEWS_FILE_PATTERN)):
+    for path in files:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
@@ -94,6 +134,8 @@ def load_news_events() -> List[Dict[str, Any]]:
                 )
 
     events.sort(key=lambda item: item["timestamp"])
+    _NEWS_CACHE = events
+    _NEWS_CACHE_KEY = cache_key
     return events
 
 
