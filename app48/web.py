@@ -26,6 +26,10 @@ import csv
 from email.parser import BytesParser
 from email.policy import default as email_default
 
+from news_loader import find_news_for_timestamp
+
+MINUTES_PER_STEP = 48
+
 
 def load_candles_from_text(text: str) -> List[Candle]:
     sample = text[:4096]
@@ -512,10 +516,20 @@ class AppHandler(BaseHTTPRequestHandler):
                             dc_info = "True" if hit.dc_flag else "False"
                             if hit.used_dc:
                                 dc_info += " (rule)"
+                            news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP)
+                            if news_hits:
+                                detail_lines = [
+                                    f"{html.escape(ev['time'])} {html.escape(ev['title'])}"
+                                    for ev in news_hits
+                                ]
+                                news_cell_html = "Var<br>" + "<br>".join(detail_lines)
+                            else:
+                                news_cell_html = "Yok"
                             rows.append(
                                 f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
                                 f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"
-                                f"<td>{html.escape(prev_label)}</td><td>{tag}</td><td>{dc_info}</td></tr>"
+                                f"<td>{html.escape(prev_label)}</td><td>{tag}</td><td>{dc_info}</td>"
+                                f"<td>{news_cell_html}</td></tr>"
                             )
 
                     info = (
@@ -535,7 +549,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     )
 
                     if rows:
-                        table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>Tag</th><th>DC</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+                        table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>Tag</th><th>DC</th><th>Haber</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
                     else:
                         table = "<p>IOU mum bulunamadı.</p>"
 

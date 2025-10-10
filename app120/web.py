@@ -33,6 +33,8 @@ from email.parser import BytesParser
 from email.policy import default as email_default
 from datetime import timedelta
 
+from news_loader import find_news_for_timestamp
+
 
 def load_candles_from_text(text: str, candle_cls: Type) -> List:
     sample = text[:4096]
@@ -548,17 +550,30 @@ class App120Handler(BaseHTTPRequestHandler):
                                 dc_info = "True" if hit.dc_flag else "False"
                                 if hit.used_dc:
                                     dc_info += " (rule)"
-                                rows_html.append(
-                                    f"<tr>"
-                                    f"<td>{off_label}</td>"
-                                    f"<td>{hit.seq_value}</td>"
-                                    f"<td>{hit.idx}</td>"
-                                    f"<td>{html.escape(ts_s)}</td>"
-                                    f"<td>{html.escape(oc_label)}</td>"
-                                    f"<td>{html.escape(prev_label)}</td>"
-                                    f"<td>{dc_info}</td>"
-                                    f"</tr>"
-                                )
+
+                                cells = [
+                                    f"<td>{off_label}</td>",
+                                    f"<td>{hit.seq_value}</td>",
+                                    f"<td>{hit.idx}</td>",
+                                    f"<td>{html.escape(ts_s)}</td>",
+                                    f"<td>{html.escape(oc_label)}</td>",
+                                    f"<td>{html.escape(prev_label)}</td>",
+                                    f"<td>{dc_info}</td>",
+                                ]
+
+                                if metric_label == "IOU":
+                                    news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP)
+                                    if news_hits:
+                                        detail_lines = [
+                                            f"{html.escape(ev['time'])} {html.escape(ev['title'])}"
+                                            for ev in news_hits
+                                        ]
+                                        news_cell_html = "Var<br>" + "<br>".join(detail_lines)
+                                    else:
+                                        news_cell_html = "Yok"
+                                    cells.append(f"<td>{news_cell_html}</td>")
+
+                                rows_html.append("<tr>" + "".join(cells) + "</tr>")
 
                     filename = entry.get("filename") or "uploaded.csv"
                     info = (
@@ -578,7 +593,10 @@ class App120Handler(BaseHTTPRequestHandler):
                     )
 
                     if rows_html:
-                        header = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>"
+                        if metric_label == "IOU":
+                            header = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th><th>Haber</th></tr></thead><tbody>"
+                        else:
+                            header = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>"
                         table = header + "".join(rows_html) + "</tbody></table>"
                     else:
                         table = f"<p>{metric_label} mum bulunamadı.</p>"

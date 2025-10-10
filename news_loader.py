@@ -1,0 +1,118 @@
+import json
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+NEWS_FILE_PATTERN = "*.json"
+NEWS_DIR_NAME = "economic_calendar"
+_NEWS_CACHE: List[Dict[str, Any]] = []
+_NEWS_CACHE_KEY: Optional[Tuple[Tuple[str, int, int], ...]] = None
+
+
+def _gather_news_files(base_dir: Path) -> List[Path]:
+    """
+    Collect news JSON files from the dedicated economic_calendar directory.
+    Falls back to root-level JSON files so existing drops continue to work.
+    """
+    candidates: List[Path] = []
+    calendar_dir = base_dir / NEWS_DIR_NAME
+    if calendar_dir.exists():
+        candidates.extend(p for p in calendar_dir.glob(NEWS_FILE_PATTERN) if p.is_file())
+    candidates.extend(p for p in base_dir.glob(NEWS_FILE_PATTERN) if p.is_file())
+
+    seen = set()
+    unique: List[Path] = []
+    for path in sorted(candidates):
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(path)
+    return unique
+
+
+def _build_news_cache_key(files: List[Path]) -> Tuple[Tuple[str, int, int], ...]:
+    key_parts: List[Tuple[str, int, int]] = []
+    for path in files:
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            continue
+        key_parts.append((str(path.resolve()), int(stat.st_mtime_ns), stat.st_size))
+    return tuple(key_parts)
+
+
+def load_news_events() -> List[Dict[str, Any]]:
+    """
+    Load ForexFactory-style news events from JSON files. Each file must provide a
+    top-level `days` list whose entries expose `date` and an `events` list. Every
+    event should include `time_24h` (HH:MM) and `title`. The loader caches results
+    and refreshes automatically when files change.
+    """
+    base_dir = Path(__file__).resolve().parent
+    files = _gather_news_files(base_dir)
+    cache_key = _build_news_cache_key(files)
+
+    global _NEWS_CACHE, _NEWS_CACHE_KEY
+    if cache_key == _NEWS_CACHE_KEY:
+        return _NEWS_CACHE
+
+    events: List[Dict[str, Any]] = []
+    for path in files:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        days = payload.get("days")
+        if not isinstance(days, list):
+            continue
+
+        for day in days:
+            if not isinstance(day, dict):
+                continue
+            date_str = day.get("date")
+            event_list = day.get("events") or []
+
+            if not date_str or not isinstance(event_list, list):
+                continue
+
+            for event in event_list:
+                if not isinstance(event, dict):
+                    continue
+
+                time_str = event.get("time_24h")
+                title = (event.get("title") or "").strip()
+
+                if not (isinstance(time_str, str) and len(time_str) == 5 and time_str[2] == ":" and title):
+                    continue
+
+                try:
+                    event_ts = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+                except ValueError:
+                    continue
+
+                events.append(
+                    {
+                        "timestamp": event_ts,
+                        "time": time_str,
+                        "title": title,
+                    }
+                )
+
+    events.sort(key=lambda item: item["timestamp"])
+    _NEWS_CACHE = events
+    _NEWS_CACHE_KEY = cache_key
+    return events
+
+
+def find_news_for_timestamp(ts: datetime, duration_minutes: int) -> List[Dict[str, Any]]:
+    """
+    Return news events that fall within the inclusive start / exclusive end window
+    of the candle that begins at `ts`.
+    """
+    events = load_news_events()
+    if not events:
+        return []
+
+    window_end = ts + timedelta(minutes=duration_minutes)
+    return [event for event in events if ts <= event["timestamp"] < window_end]
