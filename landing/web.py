@@ -5,7 +5,7 @@ import argparse
 import html
 from typing import Dict
 
-from favicon import FAVICON_DATA_URL
+from favicon import render_head_links, try_load_asset
 
 
 def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
@@ -24,12 +24,13 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
             """
         )
 
+    head_links = render_head_links("    ")
     page = f"""<!doctype html>
 <html lang='tr'>
   <head>
     <meta charset='utf-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
-    <link rel='icon' type='image/svg+xml' href='{FAVICON_DATA_URL}'>
+    {head_links}
     <title>Trading Araçları | Landing Page</title>
     <style>
       :root {{
@@ -136,6 +137,15 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
 def make_handler(html_bytes: bytes):
     class LandingHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
+            asset = try_load_asset(self.path)
+            if asset:
+                payload, content_type = asset
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
             if self.path in {"/", "/index", "/index.html"}:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")

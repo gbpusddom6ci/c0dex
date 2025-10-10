@@ -4,7 +4,7 @@ import html
 import io
 from typing import List, Optional, Dict, Any, Tuple
 
-from favicon import FAVICON_DATA_URL
+from favicon import render_head_links, try_load_asset
 
 from .main import (
     Candle,
@@ -80,12 +80,13 @@ def format_pip(delta: Optional[float]) -> str:
 
 
 def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
+    head_links = render_head_links("    ")
     html_doc = f"""<!doctype html>
 <html>
   <head>
     <meta charset='utf-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'/>
-    <link rel='icon' type='image/svg+xml' href='{FAVICON_DATA_URL}'>
+    {head_links}
     <title>{html.escape(title)}</title>
     <style>
       body{{font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:20px;}}
@@ -332,17 +333,27 @@ class AppHandler(BaseHTTPRequestHandler):
         return fields
 
     def do_GET(self):
+        asset = try_load_asset(self.path)
+        if asset:
+            payload, content_type = asset
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        if self.path.startswith("/dc"):
+            body = render_dc_index()
+        elif self.path.startswith("/matrix"):
+            body = render_matrix_index()
+        elif self.path.startswith("/iou"):
+            body = render_iou_index()
+        else:
+            body = render_index()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
-        if self.path.startswith("/dc"):
-            self.wfile.write(render_dc_index())
-        elif self.path.startswith("/matrix"):
-            self.wfile.write(render_matrix_index())
-        elif self.path.startswith("/iou"):
-            self.wfile.write(render_iou_index())
-        else:
-            self.wfile.write(render_index())
+        self.wfile.write(body)
 
     def do_POST(self):
         if self.path not in ("/analyze", "/dc", "/matrix", "/iou"):

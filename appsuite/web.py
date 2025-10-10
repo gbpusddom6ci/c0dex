@@ -17,6 +17,7 @@ from app72.web import run as run_app72
 from app80.web import run as run_app80
 from app120.web import run as run_app120
 from app321.web import run as run_app321
+from favicon import try_load_asset
 
 
 @dataclass(frozen=True)
@@ -117,6 +118,15 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
             self.wfile.write(payload)
 
         def do_GET(self) -> None:  # noqa: N802
+            asset = try_load_asset(self.path)
+            if asset:
+                payload, content_type = asset
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
             if self.path in {"/", "/index", "/index.html"}:
                 self._serve_landing()
                 return
