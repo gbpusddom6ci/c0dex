@@ -91,11 +91,23 @@ def load_news_events() -> List[Dict[str, Any]]:
                 except ValueError:
                     continue
 
+                values = event.get("values") or {}
+
+                def _is_null_value(val: Any) -> bool:
+                    if val is None:
+                        return True
+                    if isinstance(val, str):
+                        return val.strip().lower() == "null" or val.strip() == ""
+                    return False
+
+                has_null_value = _is_null_value(values.get("actual"))
+
                 events.append(
                     {
                         "timestamp": event_ts,
                         "time": time_str,
                         "title": title,
+                        "has_null_value": has_null_value,
                     }
                 )
 
@@ -105,14 +117,36 @@ def load_news_events() -> List[Dict[str, Any]]:
     return events
 
 
-def find_news_for_timestamp(ts: datetime, duration_minutes: int) -> List[Dict[str, Any]]:
+def find_news_for_timestamp(
+    ts: datetime,
+    duration_minutes: int,
+    null_back_minutes: int = 0,
+) -> List[Dict[str, Any]]:
     """
     Return news events that fall within the inclusive start / exclusive end window
-    of the candle that begins at `ts`.
+    of the candle that begins at `ts`. If `null_back_minutes` is provided, recent
+    news entries whose actual values are missing/NULL are also returned when they
+    occurred within the previous `null_back_minutes`.
     """
     events = load_news_events()
     if not events:
         return []
 
     window_end = ts + timedelta(minutes=duration_minutes)
-    return [event for event in events if ts <= event["timestamp"] < window_end]
+    null_window_start = ts - timedelta(minutes=max(0, null_back_minutes))
+
+    matches: List[Dict[str, Any]] = []
+    for event in events:
+        event_ts = event["timestamp"]
+        if ts <= event_ts < window_end:
+            matches.append({**event, "window": "forward"})
+            continue
+        if (
+            null_back_minutes > 0
+            and event.get("has_null_value")
+            and null_window_start <= event_ts < ts
+        ):
+            matches.append({**event, "window": "recent-null"})
+
+    matches.sort(key=lambda item: item["timestamp"])
+    return matches

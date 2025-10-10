@@ -562,10 +562,11 @@ class App120Handler(BaseHTTPRequestHandler):
                                 ]
 
                                 if metric_label == "IOU":
-                                    news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP)
+                                    news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP, null_back_minutes=60)
                                     if news_hits:
                                         detail_lines = [
                                             f"{html.escape(ev['time'])} {html.escape(ev['title'])}"
+                                            + (" (null)" if ev.get("window") == "recent-null" else "")
                                             for ev in news_hits
                                         ]
                                         news_cell_html = "Var<br>" + "<br>".join(detail_lines)
