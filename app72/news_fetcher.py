@@ -54,21 +54,12 @@ def _format_week_param(d: date) -> str:
 
 def _decode_response(data: bytes, encoding: Optional[str]) -> List[dict]:
     payload = gzip.decompress(data) if encoding == "gzip" else data
-    text = payload.decode("utf-8")
-    if text.lstrip().startswith("<"):
-        raise RateLimitError("rate limited (html payload)")
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError as exc:  # pragma: no cover
-        raise RuntimeError("ForexFactory JSON çözümlenemedi") from exc
+    return json.loads(payload.decode("utf-8"))
 
 
 def _decode_csv(data: bytes, encoding: Optional[str]) -> List[dict]:
     payload = gzip.decompress(data) if encoding == "gzip" else data
-    text = payload.decode("utf-8")
-    if text.lstrip().startswith("<"):
-        raise RateLimitError("rate limited (html payload)")
-    reader = csv.DictReader(text.splitlines())
+    reader = csv.DictReader(payload.decode("utf-8").splitlines())
     return list(reader)
 
 
@@ -113,8 +104,6 @@ def _request_week_csv(week: date, *, retries: int = 2) -> List[dict]:
                 encoding = resp.headers.get("Content-Encoding")
                 return _decode_csv(raw, encoding)
         except HTTPError as exc:
-            if exc.code == 429:
-                raise RateLimitError(f"rate limited for {url} retry_after={exc.headers.get('Retry-After')}")
             if 500 <= exc.code < 600 and attempt < retries - 1:
                 time.sleep(delay)
                 delay = min(delay * 2, MAX_SLEEP_ON_RETRY)
@@ -131,13 +120,8 @@ def _request_week_csv(week: date, *, retries: int = 2) -> List[dict]:
 def _request_week(week: date, *, retries: int = 3) -> List[dict]:
     try:
         return _request_week_json(week, retries=retries)
-    except RateLimitError as exc_json:
-        try:
-            csv_payload = _request_week_csv(week)
-        except RateLimitError as exc_csv:
-            raise RateLimitError(
-                f"ForexFactory rate limit aşıldı (week={_format_week_param(week)})"
-            ) from exc_csv
+    except RateLimitError:
+        csv_payload = _request_week_csv(week)
         for item in csv_payload:
             date_str = (item.get("Date") or "").strip()
             time_str = (item.get("Time") or "").strip()
