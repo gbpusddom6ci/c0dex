@@ -1,8 +1,11 @@
-from http.server import HTTPServer, BaseHTTPRequestHandler
 import argparse
+import csv
 import html
 import io
-import csv
+import json
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
+from functools import lru_cache
 from typing import List, Optional, Dict, Any, Type
 
 from favicon import render_head_links, try_load_asset
@@ -30,7 +33,85 @@ from .main import (
 )
 from email.parser import BytesParser
 from email.policy import default as email_default
-from datetime import timedelta
+from datetime import datetime, timedelta
+
+
+NEWS_FILE_PATTERN = "*.json"
+
+
+@lru_cache(maxsize=1)
+def load_news_events() -> List[Dict[str, Any]]:
+    """
+    Loads ForexFactory-like news events from JSON files located at the project root.
+    Files must expose a top-level \"days\" list with \"events\" entries. Each event
+    needs a date (YYYY-MM-DD), 24h time (HH:MM), and a title. Additional files placed
+    alongside the existing data will be picked up automatically.
+    """
+    base_dir = Path(__file__).resolve().parent.parent
+    events: List[Dict[str, Any]] = []
+
+    for path in sorted(base_dir.glob(NEWS_FILE_PATTERN)):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        days = payload.get("days")
+        if not isinstance(days, list):
+            continue
+
+        for day in days:
+            if not isinstance(day, dict):
+                continue
+            date_str = day.get("date")
+            event_list = day.get("events") or []
+
+            if not date_str or not isinstance(event_list, list):
+                continue
+
+            for event in event_list:
+                if not isinstance(event, dict):
+                    continue
+
+                time_str = event.get("time_24h")
+                title = (event.get("title") or "").strip()
+
+                # Skip entries without a precise time stamp or title.
+                if not (isinstance(time_str, str) and len(time_str) == 5 and time_str[2] == ":" and title):
+                    continue
+
+                try:
+                    event_ts = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+                except ValueError:
+                    continue
+
+                events.append(
+                    {
+                        "timestamp": event_ts,
+                        "time": time_str,
+                        "title": title,
+                    }
+                )
+
+    events.sort(key=lambda item: item["timestamp"])
+    return events
+
+
+def find_news_for_timestamp(ts: datetime, duration_minutes: int) -> List[Dict[str, Any]]:
+    """
+    Returns ForexFactory news events that fall within the inclusive start / exclusive
+    end window of the candle represented by `ts`.
+    """
+    events = load_news_events()
+    if not events:
+        return []
+
+    window_end = ts + timedelta(minutes=duration_minutes)
+    return [
+        event
+        for event in events
+        if ts <= event["timestamp"] < window_end
+    ]
 
 
 def load_candles_from_text(text: str, candle_cls: Type) -> List:
@@ -484,10 +565,20 @@ class App72Handler(BaseHTTPRequestHandler):
                             dc_info = "True" if hit.dc_flag else "False"
                             if hit.used_dc:
                                 dc_info += " (rule)"
+                            news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP)
+                            if news_hits:
+                                detail_lines = [
+                                    f"{html.escape(ev['time'])} {html.escape(ev['title'])}"
+                                    for ev in news_hits
+                                ]
+                                news_cell_html = "Var<br>" + "<br>".join(detail_lines)
+                            else:
+                                news_cell_html = "Yok"
                             rows.append(
                                 f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
                                 f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"
-                                f"<td>{html.escape(prev_label)}</td><td>{dc_info}</td></tr>"
+                                f"<td>{html.escape(prev_label)}</td><td>{dc_info}</td>"
+                                f"<td>{news_cell_html}</td></tr>"
                             )
 
                     info = (
@@ -506,7 +597,7 @@ class App72Handler(BaseHTTPRequestHandler):
                     )
 
                     if rows:
-                        table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+                        table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th><th>Haber</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
                     else:
                         table = "<p>IOU mum bulunamadı.</p>"
 
