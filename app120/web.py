@@ -5,6 +5,8 @@ import io
 import csv
 from typing import List, Optional, Dict, Any, Type
 
+from favicon import FAVICON_DATA_URL
+
 from .counter import (
     Candle as CounterCandle,
     SEQUENCES,
@@ -92,6 +94,7 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
   <head>
     <meta charset='utf-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'/>
+    <link rel='icon' type='image/svg+xml' href='{FAVICON_DATA_URL}'>
     <title>{html.escape(title)}</title>
     <style>
       body{{font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin:20px;}}

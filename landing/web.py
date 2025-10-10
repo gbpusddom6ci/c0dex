@@ -5,6 +5,8 @@ import argparse
 import html
 from typing import Dict
 
+from favicon import FAVICON_DATA_URL
+
 
 def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
     cards = []
@@ -27,6 +29,7 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
   <head>
     <meta charset='utf-8'>
     <meta name='viewport' content='width=device-width, initial-scale=1'>
+    <link rel='icon' type='image/svg+xml' href='{FAVICON_DATA_URL}'>
     <title>Trading Araçları | Landing Page</title>
     <style>
       :root {{
