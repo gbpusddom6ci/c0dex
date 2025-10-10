@@ -573,6 +573,9 @@ class App72Handler(BaseHTTPRequestHandler):
                         for rec in hit_records:
                             if not rec["ts"]:
                                 continue
+                            if news_error:
+                                rec["news_html"] = "haber verisi alınamadı"
+                                continue
                             window_start = rec["ts"] - timedelta(minutes=news_before)
                             window_end = rec["ts"] + timedelta(minutes=news_after)
                             matched = [
