@@ -28,6 +28,7 @@ from .main import (
     convert_12m_to_72m,
     format_price,
 )
+from .news_fetcher import fetch_calendar_events
 from email.parser import BytesParser
 from email.policy import default as email_default
 from datetime import timedelta
@@ -87,6 +88,15 @@ def format_pip(delta: Optional[float]) -> str:
     return f"{delta:+.5f}"
 
 
+def format_delta_minutes(base_ts, target_ts) -> str:
+    diff = int((target_ts - base_ts).total_seconds() // 60)
+    if diff == 0:
+        return "0dk"
+    if diff > 0:
+        return f"+{diff}dk"
+    return f"{diff}dk"
+
+
 def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
     head_links = render_head_links("    ")
     html_doc = f"""<!doctype html>
@@ -111,6 +121,7 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
       .tabs{{display:flex; gap:12px; margin-bottom:12px;}}
       .tabs a{{text-decoration:none; color:#0366d6; padding:6px 8px; border-radius:6px;}}
       .tabs a.active{{background:#e6f2ff; color:#024ea2;}}
+      .error{{color:#b3261e; margin-top:8px;}}
     </style>
   </head>
   <body>
@@ -302,12 +313,35 @@ def render_iou_index() -> bytes:
             <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
           </div>
         </div>
+        <div class='row'>
+          <div>
+            <label><input type='checkbox' name='news_enabled' value='1' checked /> Haber kontrolü ekle</label>
+          </div>
+          <div>
+            <label>Impact filtresi</label>
+            <select name='min_impact'>
+              <option value='all'>Tümü</option>
+              <option value='holiday'>Holiday+</option>
+              <option value='low' selected>Low+</option>
+              <option value='medium'>Medium+</option>
+              <option value='high'>High</option>
+            </select>
+          </div>
+          <div>
+            <label>Önce (dk)</label>
+            <input type='number' step='1' min='0' value='72' name='news_before' />
+          </div>
+          <div>
+            <label>Sonra (dk)</label>
+            <input type='number' step='1' min='0' value='0' name='news_after' />
+          </div>
+        </div>
         <div style='margin-top:12px;'>
           <button type='submit'>IOU Tara</button>
         </div>
       </form>
     </div>
-    <p>IOU taraması, limit üstündeki OC/PrevOC ikililerinden aynı işaret taşıyanları dosya bazlı gösterir. Birden fazla CSV seçebilirsin.</p>
+    <p>IOU taraması, limit üstündeki OC/PrevOC ikililerinden aynı işaret taşıyanları dosya bazlı gösterir. Haber kontrolü açıksa her mum için seçilen dakika aralığındaki ForexFactory etkinlikleri listelenir.</p>
     """
     return page("app72 - IOU", body, active_tab="iou")
 
@@ -440,6 +474,21 @@ class App72Handler(BaseHTTPRequestHandler):
                 limit_val = abs(limit_val)
 
                 sections: List[str] = []
+                news_enabled = "news_enabled" in form
+                impact_choice = (form.get("min_impact", {}).get("value") or "low").strip().lower()
+                if impact_choice not in {"all", "holiday", "low", "medium", "high"}:
+                    impact_choice = "low"
+                def parse_int_field(name: str, default: int) -> int:
+                    raw = (form.get(name, {}).get("value") or "").strip()
+                    if not raw:
+                        return default
+                    try:
+                        return max(0, int(raw))
+                    except Exception:
+                        return default
+                news_before = parse_int_field("news_before", 72)
+                news_after = parse_int_field("news_after", 0)
+
                 for entry in files_list:
                     entry_data = entry.get("data")
                     if isinstance(entry_data, (bytes, bytearray)):
@@ -464,7 +513,7 @@ class App72Handler(BaseHTTPRequestHandler):
                     offset_statuses: List[str] = []
                     offset_counts: List[str] = []
                     total_hits = 0
-                    rows: List[str] = []
+                    hit_records: List[Dict[str, Any]] = []
                     for item in report.offsets:
                         off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
                         status = item.offset_status or "-"
@@ -484,11 +533,75 @@ class App72Handler(BaseHTTPRequestHandler):
                             dc_info = "True" if hit.dc_flag else "False"
                             if hit.used_dc:
                                 dc_info += " (rule)"
-                            rows.append(
-                                f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
-                                f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"
-                                f"<td>{html.escape(prev_label)}</td><td>{dc_info}</td></tr>"
+                            hit_records.append(
+                                {
+                                    "offset": item.offset,
+                                    "offset_label": off_label,
+                                    "seq_value": hit.seq_value,
+                                    "idx": hit.idx,
+                                    "ts": hit.ts,
+                                    "ts_label": ts_s,
+                                    "oc_label": oc_label,
+                                    "prev_label": prev_label,
+                                    "dc_info": dc_info,
+                                    "used_dc": hit.used_dc,
+                                    "news_html": "-",
+                                }
                             )
+
+                    news_error: Optional[str] = None
+                    if news_enabled and hit_records:
+                        before_delta = timedelta(minutes=news_before)
+                        after_delta = timedelta(minutes=news_after)
+                        try:
+                            earliest = min(rec["ts"] - before_delta for rec in hit_records)
+                            latest = max(rec["ts"] + after_delta for rec in hit_records)
+                        except Exception:
+                            earliest = latest = None
+                        impact_filter = None if impact_choice == "all" else impact_choice
+                        events = []
+                        if earliest is not None and latest is not None:
+                            try:
+                                events = fetch_calendar_events(
+                                    earliest,
+                                    latest,
+                                    tz_offset_hours=-4,
+                                    min_impact=impact_filter,
+                                )
+                            except Exception as exc:
+                                news_error = str(exc)
+                        for rec in hit_records:
+                            if not rec["ts"]:
+                                continue
+                            window_start = rec["ts"] - timedelta(minutes=news_before)
+                            window_end = rec["ts"] + timedelta(minutes=news_after)
+                            matched = [
+                                ev for ev in events
+                                if window_start <= ev.timestamp <= window_end
+                            ]
+                            if not matched:
+                                rec["news_html"] = "haber yok"
+                                continue
+                            lines: List[str] = []
+                            for ev in matched:
+                                header = (
+                                    f"{ev.timestamp:%Y-%m-%d %H:%M} "
+                                    f"[{ev.impact or '-'}] {ev.country or '-'} - {ev.title or '-'}"
+                                )
+                                delta_s = format_delta_minutes(rec["ts"], ev.timestamp)
+                                line = f"{html.escape(header)}<br><small>Δ={html.escape(delta_s)}"
+                                extras: List[str] = []
+                                if ev.actual:
+                                    extras.append(f"actual:{ev.actual}")
+                                if ev.forecast:
+                                    extras.append(f"forecast:{ev.forecast}")
+                                if ev.previous:
+                                    extras.append(f"previous:{ev.previous}")
+                                if extras:
+                                    line += " " + " ".join(html.escape(x) for x in extras)
+                                line += "</small>"
+                                lines.append(line)
+                            rec["news_html"] = "<br>".join(lines)
 
                     info = (
                         f"<div class='card'>"
@@ -502,11 +615,41 @@ class App72Handler(BaseHTTPRequestHandler):
                         f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
                         f"<div><strong>Offset IOU sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
                         f"<div><strong>Toplam IOU:</strong> {total_hits}</div>"
+                    )
+                    if news_enabled:
+                        impact_label = {
+                            "all": "Tümü",
+                            "holiday": "Holiday ve üzeri",
+                            "low": "Low ve üzeri",
+                            "medium": "Medium ve üzeri",
+                            "high": "High",
+                        }[impact_choice]
+                        info += (
+                            f"<div><strong>Haber aralığı:</strong> -{news_before}dk / +{news_after}dk</div>"
+                            f"<div><strong>Impact filtresi:</strong> {impact_label}</div>"
+                        )
+                        if news_error:
+                            info += f"<div class='error'>Haber verisi alınamadı: {html.escape(news_error)}</div>"
+                    info += (
                         f"</div>"
                     )
 
-                    if rows:
-                        table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+                    if hit_records:
+                        rows_html = []
+                        for rec in hit_records:
+                            rows_html.append(
+                                "<tr>"
+                                f"<td>{html.escape(rec['offset_label'])}</td>"
+                                f"<td>{rec['seq_value']}</td>"
+                                f"<td>{rec['idx']}</td>"
+                                f"<td>{html.escape(rec['ts_label'])}</td>"
+                                f"<td>{html.escape(rec['oc_label'])}</td>"
+                                f"<td>{html.escape(rec['prev_label'])}</td>"
+                                f"<td>{html.escape(rec['dc_info'])}</td>"
+                                f"<td>{rec['news_html']}</td>"
+                                "</tr>"
+                            )
+                        table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th><th>Haberler</th></tr></thead><tbody>" + "".join(rows_html) + "</tbody></table>"
                     else:
                         table = "<p>IOU mum bulunamadı.</p>"
 
