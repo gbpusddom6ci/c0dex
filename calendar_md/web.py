@@ -221,6 +221,12 @@ class CalendarHandler(BaseHTTPRequestHandler):
         pass
 
 
+def run(host: str, port: int) -> None:
+    server = HTTPServer((host, port), CalendarHandler)
+    print(f"calendar_md web: http://{host}:{port}/")
+    server.serve_forever()
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="calendar_md.web",
@@ -230,9 +236,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--port", type=int, default=2300, help="Port (varsayılan 2300)")
     args = parser.parse_args(argv)
 
-    server = HTTPServer((args.host, args.port), CalendarHandler)
-    print(f"calendar_md web: http://{args.host}:{args.port}/")
-    server.serve_forever()
+    run(args.host, args.port)
     return 0
 
 
