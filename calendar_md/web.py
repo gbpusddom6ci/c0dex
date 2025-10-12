@@ -7,6 +7,7 @@ import json
 from cgi import FieldStorage
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Dict, List, Optional, Tuple
+from zipfile import ZipFile, ZIP_DEFLATED
 
 from favicon import render_head_links, try_load_asset
 
@@ -248,23 +249,19 @@ class CalendarHandler(BaseHTTPRequestHandler):
                     self.wfile.write(result_bytes)
                     return
 
-                boundary = "---calendar-boundary---"
-                body_parts: List[bytes] = []
-                for name, data in outputs:
-                    header = (
-                        f"--{boundary}\r\n"
-                        f"Content-Type: application/json; charset=utf-8\r\n"
-                        f"Content-Disposition: attachment; filename=\"{name}\"\r\n\r\n"
-                    ).encode("utf-8")
-                    body_parts.append(header + data + b"\r\n")
-                body_parts.append(f"--{boundary}--\r\n".encode("utf-8"))
-                body = b"".join(body_parts)
+                buffer = io.BytesIO()
+                with ZipFile(buffer, "w", ZIP_DEFLATED) as zf:
+                    for name, data in outputs:
+                        zf.writestr(name, data)
+                zip_bytes = buffer.getvalue()
+                zip_name = _sanitize_filename("calendar_bundle.zip")
 
                 self.send_response(200)
-                self.send_header("Content-Type", f"multipart/mixed; boundary={boundary}")
-                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", f'attachment; filename="{zip_name}"')
+                self.send_header("Content-Length", str(len(zip_bytes)))
                 self.end_headers()
-                self.wfile.write(body)
+                self.wfile.write(zip_bytes)
                 return
 
             # Fallback to textarea content
