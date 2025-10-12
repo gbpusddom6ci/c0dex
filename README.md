@@ -69,3 +69,10 @@ python3 -m app321.web
 - ✅ Matrix görünümü (tüm offsetler tek ekranda)
 - ✅ Timeframe dönüştürücüler
 - ✅ Tahmin (prediction) desteği
+
+## Yardımcı Araçlar
+
+- `python3 -m calendar_md --input ornek.md --year 2025 --output economic_calendar/ornek.json`  
+  Markdown formatındaki ekonomik takvimi JSON şemasına dönüştürür. `--timezone` ve `--source` parametreleri meta bilgisini günceller.
+- `python3 -m calendar_md.web --port 2300`  
+  Tarayıcı üzerinden metni yapıştırıp JSON çıktısını alan basit web arayüzü (landing sayfasındaki “Takvim Dönüştürücü” kartına bağlanır).
