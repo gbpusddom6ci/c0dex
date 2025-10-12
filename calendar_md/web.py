@@ -15,25 +15,14 @@ from .parser import parse_calendar_markdown, to_json_document
 def render_form(
     initial_text: str = "",
     *,
-    result: Optional[str] = None,
     error: Optional[str] = None,
     year: int = 2025,
     timezone: str = "UTC-4",
     source: str = "markdown_import",
+    filename: str = "calendar.json",
 ) -> bytes:
     head_links = render_head_links("    ")
-    result_html = ""
-    if error:
-        result_html = f"<div class='error'>⚠️ {html.escape(error)}</div>"
-    elif result is not None:
-        escaped_result = html.escape(result)
-        result_html = f"""
-        <section class='result'>
-          <h3>Dönüştürülen JSON</h3>
-          <textarea readonly rows='20'>{escaped_result}</textarea>
-        </section>
-        """
-
+    error_html = f"<div class='error'>⚠️ {html.escape(error)}</div>" if error else ""
     html_doc = f"""<!doctype html>
 <html lang='tr'>
   <head>
@@ -103,21 +92,21 @@ def render_form(
         margin-bottom: 16px;
         max-width: 960px;
       }}
-      .result textarea {{
-        background: #1f1f1f;
-        color: #f5f5f5;
-      }}
     </style>
   </head>
   <body>
     <h1>Takvim Dönüştürücü</h1>
     <p>ForexFactory tarzı markdown verisini JSON şemasına çevir.</p>
-    {result_html}
+    {error_html}
     <form method='POST'>
       <div class='row'>
         <label>
           Yıl
           <input type='number' name='year' value='{year}' min='2000' max='2100'/>
+        </label>
+        <label>
+          Çıkış Dosyası
+          <input type='text' name='filename' value='{html.escape(filename)}'/>
         </label>
         <label>
           Timezone
@@ -145,6 +134,13 @@ def parse_form(body: bytes, content_type: str) -> Dict[str, str]:
         return {k: v[0] for k, v in parsed.items() if v}
     return {}
 
+def _sanitize_filename(name: str) -> str:
+    cleaned = ''.join(ch for ch in name if ch.isalnum() or ch in ('-', '_', '.'))
+    cleaned = cleaned or 'calendar.json'
+    if '.' not in cleaned:
+        cleaned += '.json'
+    return cleaned
+
 
 class CalendarHandler(BaseHTTPRequestHandler):
     form_defaults = {
@@ -152,6 +148,7 @@ class CalendarHandler(BaseHTTPRequestHandler):
         "year": "2025",
         "timezone": "UTC-4",
         "source": "markdown_import",
+        "filename": "calendar.json",
     }
 
     def do_GET(self) -> None:  # noqa: N802
@@ -186,11 +183,11 @@ class CalendarHandler(BaseHTTPRequestHandler):
         markdown = fields.get("markdown", "")
 
         error = None
-        result = None
         try:
             year = int(fields.get("year", "2025") or 2025)
             timezone = fields.get("timezone", "UTC-4") or "UTC-4"
             source = fields.get("source", "markdown_import") or "markdown_import"
+            filename = fields.get("filename", "calendar.json") or "calendar.json"
 
             days = parse_calendar_markdown(markdown, year=year)
             document = to_json_document(
@@ -199,7 +196,16 @@ class CalendarHandler(BaseHTTPRequestHandler):
                 timezone=timezone,
                 source=source,
             )
-            result = json.dumps(document, ensure_ascii=False, indent=2)
+            result_bytes = json.dumps(document, ensure_ascii=False, indent=2).encode("utf-8")
+            safe_name = _sanitize_filename(filename)
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Disposition", f'attachment; filename="{safe_name}"')
+            self.send_header("Content-Length", str(len(result_bytes)))
+            self.end_headers()
+            self.wfile.write(result_bytes)
+            return
         except Exception as exc:  # noqa: BLE001
             error = str(exc)
 
@@ -209,11 +215,11 @@ class CalendarHandler(BaseHTTPRequestHandler):
         self.wfile.write(
             render_form(
                 markdown,
-                result=result,
                 error=error,
                 year=int(fields.get("year", "2025") or 2025),
                 timezone=fields.get("timezone", "UTC-4") or "UTC-4",
                 source=fields.get("source", "markdown_import") or "markdown_import",
+                filename=fields.get("filename", "calendar.json") or "calendar.json",
             )
         )
 
