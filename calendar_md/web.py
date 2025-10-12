@@ -160,11 +160,15 @@ def parse_form(body: bytes, content_type: str, headers) -> Tuple[Dict[str, str],
     return flat_fields, file_values
 
 def _sanitize_filename(name: str) -> str:
-    cleaned = ''.join(ch for ch in name if ch.isalnum() or ch in ('-', '_', '.'))
-    cleaned = cleaned or 'calendar.json'
-    if '.' not in cleaned:
-        cleaned += '.json'
-    return cleaned
+    cleaned = "".join(ch for ch in name if ch.isalnum() or ch in ("-", "_", "."))
+    cleaned = cleaned or "calendar"
+    lowered = cleaned.lower()
+    if lowered.endswith(".json"):
+        return cleaned
+    if "." in cleaned:
+        cleaned = cleaned.rsplit(".", 1)[0]
+    cleaned = cleaned or "calendar"
+    return cleaned + ".json"
 
 
 class CalendarHandler(BaseHTTPRequestHandler):
@@ -235,7 +239,7 @@ class CalendarHandler(BaseHTTPRequestHandler):
                         source=source,
                     )
                     result_bytes = json.dumps(document, ensure_ascii=False, indent=2).encode("utf-8")
-                    base = file_item.filename or "calendar.json"
+                    base = file_item.filename or "calendar"
                     safe_name = _sanitize_filename(base)
                     outputs.append((safe_name, result_bytes))
 
@@ -254,7 +258,7 @@ class CalendarHandler(BaseHTTPRequestHandler):
                     for name, data in outputs:
                         zf.writestr(name, data)
                 zip_bytes = buffer.getvalue()
-                zip_name = _sanitize_filename("calendar_bundle.zip")
+                zip_name = "calendar_bundle.zip"
 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/zip")
