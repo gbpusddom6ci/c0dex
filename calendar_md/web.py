@@ -21,6 +21,7 @@ def render_form(
     timezone: str = "UTC-4",
     source: str = "markdown_import",
     filename: str = "calendar.json",
+    files_info: Optional[List[str]] = None,
 ) -> bytes:
     head_links = render_head_links("    ")
     error_html = f"<div class='error'>⚠️ {html.escape(error)}</div>" if error else ""
@@ -110,10 +111,6 @@ def render_form(
           <input type='number' name='year' value='{year}' min='2000' max='2100'/>
         </label>
         <label>
-          Çıkış Dosyası
-          <input type='text' name='filename' value='{html.escape(filename)}'/>
-        </label>
-        <label>
           Timezone
           <input type='text' name='timezone' value='{html.escape(timezone)}'/>
         </label>
@@ -123,9 +120,9 @@ def render_form(
         </label>
       </div>
       <label>
-        Markdown Dosyası (opsiyonel)
-        <input type='file' name='markdown_file' accept='.md,text/plain'/>
-        <span class='hint'>Dosya seçilmezse aşağıdaki metin kutusundaki içerik kullanılır.</span>
+        Markdown Dosyaları (opsiyonel)
+        <input type='file' name='markdown_file' accept='.md,text/plain' multiple/>
+        <span class='hint'>Dosya seçilmezse aşağıdaki metin kutusundaki içerik kullanılır; birden fazla dosya seçersen her biri için ayrı JSON indirilir.</span>
       </label>
       <label>
         Markdown İçeriği
@@ -210,21 +207,69 @@ class CalendarHandler(BaseHTTPRequestHandler):
         fields = {**self.form_defaults, **field_data}
         markdown = fields.get("markdown", "")
 
-        file_items = file_data.get("markdown_file")
-        if file_items:
-            file_item = file_items[-1]
-            try:
-                file_item.file.seek(0)
-            except Exception:  # noqa: BLE001
-                pass
-            markdown = file_item.file.read().decode("utf-8", errors="replace")
+        file_items = file_data.get("markdown_file") or []
+        outputs: List[Tuple[str, bytes]] = []
 
-        error = None
         try:
             year = int(fields.get("year", "2025") or 2025)
-            timezone = fields.get("timezone", "UTC-4") or "UTC-4"
-            source = fields.get("source", "markdown_import") or "markdown_import"
-            filename = fields.get("filename", "calendar.json") or "calendar.json"
+        except Exception:
+            year = 2025
+        timezone = fields.get("timezone", "UTC-4") or "UTC-4"
+        source = fields.get("source", "markdown_import") or "markdown_import"
+        filename = fields.get("filename", "calendar.json") or "calendar.json"
+
+        try:
+            if file_items:
+                for file_item in file_items:
+                    try:
+                        file_item.file.seek(0)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    content = file_item.file.read().decode("utf-8", errors="replace")
+                    days = parse_calendar_markdown(content, year=year)
+                    document = to_json_document(
+                        days,
+                        year=year,
+                        timezone=timezone,
+                        source=source,
+                    )
+                    result_bytes = json.dumps(document, ensure_ascii=False, indent=2).encode("utf-8")
+                    base = file_item.filename or "calendar.json"
+                    safe_name = _sanitize_filename(base)
+                    outputs.append((safe_name, result_bytes))
+
+                if len(outputs) == 1:
+                    name, result_bytes = outputs[0]
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Disposition", f'attachment; filename="{name}"')
+                    self.send_header("Content-Length", str(len(result_bytes)))
+                    self.end_headers()
+                    self.wfile.write(result_bytes)
+                    return
+
+                boundary = "---calendar-boundary---"
+                body_parts: List[bytes] = []
+                for name, data in outputs:
+                    header = (
+                        f"--{boundary}\r\n"
+                        f"Content-Type: application/json; charset=utf-8\r\n"
+                        f"Content-Disposition: attachment; filename=\"{name}\"\r\n\r\n"
+                    ).encode("utf-8")
+                    body_parts.append(header + data + b"\r\n")
+                body_parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+                body = b"".join(body_parts)
+
+                self.send_response(200)
+                self.send_header("Content-Type", f"multipart/mixed; boundary={boundary}")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+
+            # Fallback to textarea content
+            if not markdown.strip():
+                raise ValueError("Markdown içeriği boş.")
 
             days = parse_calendar_markdown(markdown, year=year)
             document = to_json_document(
@@ -242,23 +287,20 @@ class CalendarHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(result_bytes)))
             self.end_headers()
             self.wfile.write(result_bytes)
-            return
         except Exception as exc:  # noqa: BLE001
-            error = str(exc)
-
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(
-            render_form(
-                markdown,
-                error=error,
-                year=int(fields.get("year", "2025") or 2025),
-                timezone=fields.get("timezone", "UTC-4") or "UTC-4",
-                source=fields.get("source", "markdown_import") or "markdown_import",
-                filename=fields.get("filename", "calendar.json") or "calendar.json",
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(
+                render_form(
+                    markdown,
+                    error=str(exc),
+                    year=year,
+                    timezone=timezone,
+                    source=source,
+                    filename=filename,
+                )
             )
-        )
 
     def log_message(self, format, *args):  # noqa: A003
         pass
