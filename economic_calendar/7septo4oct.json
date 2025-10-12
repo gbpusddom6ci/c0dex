@@ -1,0 +1,1797 @@
+{
+  "meta": {
+    "source": "markdown_import",
+    "assumptions": {
+      "year": 2025,
+      "time_zone": "UTC-4",
+      "value_columns_order": [
+        "actual",
+        "forecast",
+        "previous"
+      ],
+      "two_value_rule": "When only two values are present, interpret as (actual, previous)."
+    },
+    "counts": {
+      "days": 28,
+      "events": 124
+    }
+  },
+  "days": [
+    {
+      "date": "2025-09-07",
+      "weekday": "Sun",
+      "events": [
+        {
+          "date": "2025-09-07",
+          "weekday": "Sun",
+          "currency": "All",
+          "title": "OPEC-JMMC Meetings",
+          "time_label": "All Day",
+          "time_24h": null,
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-08",
+      "weekday": "Mon",
+      "events": []
+    },
+    {
+      "date": "2025-09-09",
+      "weekday": "Tue",
+      "events": [
+        {
+          "date": "2025-09-09",
+          "weekday": "Tue",
+          "currency": "CHF",
+          "title": "SNB Chairman Schlegel Speaks",
+          "time_label": "7:50am",
+          "time_24h": "07:50",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-09",
+          "weekday": "Tue",
+          "currency": "CNY",
+          "title": "CPI y/y",
+          "time_label": "9:30pm",
+          "time_24h": "21:30",
+          "values": {
+            "actual": "-0.4%",
+            "forecast": "-0.2%",
+            "previous": "0.0%"
+          }
+        },
+        {
+          "date": "2025-09-09",
+          "weekday": "Tue",
+          "currency": "CNY",
+          "title": "PPI y/y",
+          "time_label": "9:30pm",
+          "time_24h": "21:30",
+          "values": {
+            "actual": "-2.9%",
+            "forecast": "-2.9%",
+            "previous": "-3.6%"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-10",
+      "weekday": "Wed",
+      "events": [
+        {
+          "date": "2025-09-10",
+          "weekday": "Wed",
+          "currency": "CHF",
+          "title": "SNB Chairman Schlegel Speaks",
+          "time_label": "7:45am",
+          "time_24h": "07:45",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-10",
+          "weekday": "Wed",
+          "currency": "USD",
+          "title": "Core PPI m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "-0.1%",
+            "forecast": "0.3%",
+            "previous": "0.7%"
+          }
+        },
+        {
+          "date": "2025-09-10",
+          "weekday": "Wed",
+          "currency": "USD",
+          "title": "PPI m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "-0.1%",
+            "forecast": "0.3%",
+            "previous": "0.7%"
+          }
+        },
+        {
+          "date": "2025-09-10",
+          "weekday": "Wed",
+          "currency": "NZD",
+          "title": "RBNZ Gov Hawkesby Speaks",
+          "time_label": "7:15pm",
+          "time_24h": "19:15",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-11",
+      "weekday": "Thu",
+      "events": [
+        {
+          "date": "2025-09-11",
+          "weekday": "Thu",
+          "currency": "EUR",
+          "title": "Main Refinancing Rate",
+          "time_label": "8:15am",
+          "time_24h": "08:15",
+          "values": {
+            "actual": "2.15%",
+            "forecast": "2.15%",
+            "previous": "2.15%"
+          }
+        },
+        {
+          "date": "2025-09-11",
+          "weekday": "Thu",
+          "currency": "EUR",
+          "title": "Monetary Policy Statement",
+          "time_label": "8:15am",
+          "time_24h": "08:15",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-11",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "Core CPI m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "0.3%",
+            "forecast": "0.3%",
+            "previous": "0.3%"
+          }
+        },
+        {
+          "date": "2025-09-11",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "CPI m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "0.4%",
+            "forecast": "0.3%",
+            "previous": "0.2%"
+          }
+        },
+        {
+          "date": "2025-09-11",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "CPI y/y",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "2.9%",
+            "forecast": "2.9%",
+            "previous": "2.7%"
+          }
+        },
+        {
+          "date": "2025-09-11",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "Unemployment Claims",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "263K",
+            "forecast": "235K",
+            "previous": "236K"
+          }
+        },
+        {
+          "date": "2025-09-11",
+          "weekday": "Thu",
+          "currency": "EUR",
+          "title": "ECB Press Conference",
+          "time_label": "8:45am",
+          "time_24h": "08:45",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-12",
+      "weekday": "Fri",
+      "events": [
+        {
+          "date": "2025-09-12",
+          "weekday": "Fri",
+          "currency": "GBP",
+          "title": "GDP m/m",
+          "time_label": "2:00am",
+          "time_24h": "02:00",
+          "values": {
+            "actual": "0.0%",
+            "forecast": "0.0%",
+            "previous": "0.4%"
+          }
+        },
+        {
+          "date": "2025-09-12",
+          "weekday": "Fri",
+          "currency": "CNY",
+          "title": "New Loans",
+          "time_label": "5:00am",
+          "time_24h": "05:00",
+          "values": {
+            "actual": "590B",
+            "forecast": "700B",
+            "previous": "-50B"
+          }
+        },
+        {
+          "date": "2025-09-12",
+          "weekday": "Fri",
+          "currency": "USD",
+          "title": "Prelim UoM Consumer Sentiment",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": "55.4",
+            "forecast": "58.2",
+            "previous": "58.2"
+          }
+        },
+        {
+          "date": "2025-09-12",
+          "weekday": "Fri",
+          "currency": "USD",
+          "title": "Prelim UoM Inflation Expectations",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": "4.8%",
+            "forecast": null,
+            "previous": "4.8%"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-13",
+      "weekday": "Sat",
+      "events": []
+    },
+    {
+      "date": "2025-09-14",
+      "weekday": "Sun",
+      "events": [
+        {
+          "date": "2025-09-14",
+          "weekday": "Sun",
+          "currency": "JPY",
+          "title": "Bank Holiday",
+          "time_label": "All Day",
+          "time_24h": null,
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-14",
+          "weekday": "Sun",
+          "currency": "CNY",
+          "title": "Industrial Production y/y",
+          "time_label": "10:00pm",
+          "time_24h": "22:00",
+          "values": {
+            "actual": "5.2%",
+            "forecast": "5.7%",
+            "previous": "5.7%"
+          }
+        },
+        {
+          "date": "2025-09-14",
+          "weekday": "Sun",
+          "currency": "CNY",
+          "title": "Retail Sales y/y",
+          "time_label": "10:00pm",
+          "time_24h": "22:00",
+          "values": {
+            "actual": "3.4%",
+            "forecast": "3.8%",
+            "previous": "3.7%"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-15",
+      "weekday": "Mon",
+      "events": [
+        {
+          "date": "2025-09-15",
+          "weekday": "Mon",
+          "currency": "USD",
+          "title": "Empire State Manufacturing Index",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "-8.7",
+            "forecast": "4.3",
+            "previous": "11.9"
+          }
+        },
+        {
+          "date": "2025-09-15",
+          "weekday": "Mon",
+          "currency": "EUR",
+          "title": "ECB President Lagarde Speaks",
+          "time_label": "2:30pm",
+          "time_24h": "14:30",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-16",
+      "weekday": "Tue",
+      "events": [
+        {
+          "date": "2025-09-16",
+          "weekday": "Tue",
+          "currency": "GBP",
+          "title": "Average Earnings Index 3m/y",
+          "time_label": "2:00am",
+          "time_24h": "02:00",
+          "values": {
+            "actual": "4.7%",
+            "forecast": "4.7%",
+            "previous": "4.6%"
+          }
+        },
+        {
+          "date": "2025-09-16",
+          "weekday": "Tue",
+          "currency": "GBP",
+          "title": "Claimant Count Change",
+          "time_label": "2:00am",
+          "time_24h": "02:00",
+          "values": {
+            "actual": "17.4K",
+            "forecast": "15.3K",
+            "previous": "-33.3K"
+          }
+        },
+        {
+          "date": "2025-09-16",
+          "weekday": "Tue",
+          "currency": "EUR",
+          "title": "German ZEW Economic Sentiment",
+          "time_label": "5:00am",
+          "time_24h": "05:00",
+          "values": {
+            "actual": "37.3",
+            "forecast": "25.3",
+            "previous": "34.7"
+          }
+        },
+        {
+          "date": "2025-09-16",
+          "weekday": "Tue",
+          "currency": "CAD",
+          "title": "CPI m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "-0.1%",
+            "forecast": "0.0%",
+            "previous": "0.3%"
+          }
+        },
+        {
+          "date": "2025-09-16",
+          "weekday": "Tue",
+          "currency": "CAD",
+          "title": "Median CPI y/y",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "3.1%",
+            "forecast": "3.1%",
+            "previous": "3.1%"
+          }
+        },
+        {
+          "date": "2025-09-16",
+          "weekday": "Tue",
+          "currency": "CAD",
+          "title": "Trimmed CPI y/y",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "3.0%",
+            "forecast": "3.0%",
+            "previous": "3.1%"
+          }
+        },
+        {
+          "date": "2025-09-16",
+          "weekday": "Tue",
+          "currency": "CAD",
+          "title": "Common CPI y/y",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "2.5%",
+            "forecast": "2.5%",
+            "previous": "2.6%"
+          }
+        },
+        {
+          "date": "2025-09-16",
+          "weekday": "Tue",
+          "currency": "USD",
+          "title": "Core Retail Sales m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "0.7%",
+            "forecast": "0.4%",
+            "previous": "0.4%"
+          }
+        },
+        {
+          "date": "2025-09-16",
+          "weekday": "Tue",
+          "currency": "USD",
+          "title": "Retail Sales m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "0.6%",
+            "forecast": "0.2%",
+            "previous": "0.6%"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-17",
+      "weekday": "Wed",
+      "events": [
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "GBP",
+          "title": "CPI y/y",
+          "time_label": "2:00am",
+          "time_24h": "02:00",
+          "values": {
+            "actual": "3.8%",
+            "forecast": "3.8%",
+            "previous": "3.8%"
+          }
+        },
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "EUR",
+          "title": "ECB President Lagarde Speaks",
+          "time_label": "3:30am",
+          "time_24h": "03:30",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "CAD",
+          "title": "BOC Rate Statement",
+          "time_label": "9:45am",
+          "time_24h": "09:45",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "CAD",
+          "title": "Overnight Rate",
+          "time_label": "9:45am",
+          "time_24h": "09:45",
+          "values": {
+            "actual": "2.50%",
+            "forecast": "2.50%",
+            "previous": "2.75%"
+          }
+        },
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "CAD",
+          "title": "BOC Press Conference",
+          "time_label": "10:30am",
+          "time_24h": "10:30",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "USD",
+          "title": "Federal Funds Rate",
+          "time_label": "2:00pm",
+          "time_24h": "14:00",
+          "values": {
+            "actual": "4.25%",
+            "forecast": "4.25%",
+            "previous": "4.50%"
+          }
+        },
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "USD",
+          "title": "FOMC Economic Projections",
+          "time_label": "2:00pm",
+          "time_24h": "14:00",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "USD",
+          "title": "FOMC Statement",
+          "time_label": "2:00pm",
+          "time_24h": "14:00",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "USD",
+          "title": "FOMC Press Conference",
+          "time_label": "2:30pm",
+          "time_24h": "14:30",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "NZD",
+          "title": "GDP q/q",
+          "time_label": "6:45pm",
+          "time_24h": "18:45",
+          "values": {
+            "actual": "-0.9%",
+            "forecast": "-0.3%",
+            "previous": "0.9%"
+          }
+        },
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "AUD",
+          "title": "Employment Change",
+          "time_label": "9:30pm",
+          "time_24h": "21:30",
+          "values": {
+            "actual": "-5.4K",
+            "forecast": "21.2K",
+            "previous": "26.5K"
+          }
+        },
+        {
+          "date": "2025-09-17",
+          "weekday": "Wed",
+          "currency": "AUD",
+          "title": "Unemployment Rate",
+          "time_label": "9:30pm",
+          "time_24h": "21:30",
+          "values": {
+            "actual": "4.2%",
+            "forecast": "4.2%",
+            "previous": "4.2%"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-18",
+      "weekday": "Thu",
+      "events": [
+        {
+          "date": "2025-09-18",
+          "weekday": "Thu",
+          "currency": "GBP",
+          "title": "Monetary Policy Summary",
+          "time_label": "7:00am",
+          "time_24h": "07:00",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-18",
+          "weekday": "Thu",
+          "currency": "GBP",
+          "title": "MPC Official Bank Rate Votes",
+          "time_label": "7:00am",
+          "time_24h": "07:00",
+          "values": {
+            "actual": "0-2-7",
+            "forecast": "0-1-8",
+            "previous": "0-5-4"
+          }
+        },
+        {
+          "date": "2025-09-18",
+          "weekday": "Thu",
+          "currency": "GBP",
+          "title": "Official Bank Rate",
+          "time_label": "7:00am",
+          "time_24h": "07:00",
+          "values": {
+            "actual": "4.00%",
+            "forecast": "4.00%",
+            "previous": "4.00%"
+          }
+        },
+        {
+          "date": "2025-09-18",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "Unemployment Claims",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "231K",
+            "forecast": "241K",
+            "previous": "264K"
+          }
+        },
+        {
+          "date": "2025-09-18",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "Philly Fed Manufacturing Index",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "23.2",
+            "forecast": "1.7",
+            "previous": "-0.3"
+          }
+        },
+        {
+          "date": "2025-09-18",
+          "weekday": "Thu",
+          "currency": "JPY",
+          "title": "BOJ Policy Rate",
+          "time_label": "11:47pm",
+          "time_24h": "23:47",
+          "values": {
+            "actual": "<0.50%",
+            "forecast": "<0.50%",
+            "previous": "<0.50%"
+          }
+        },
+        {
+          "date": "2025-09-18",
+          "weekday": "Thu",
+          "currency": "JPY",
+          "title": "Monetary Policy Statement",
+          "time_label": "11:47pm",
+          "time_24h": "23:47",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-19",
+      "weekday": "Fri",
+      "events": [
+        {
+          "date": "2025-09-19",
+          "weekday": "Fri",
+          "currency": "GBP",
+          "title": "Retail Sales m/m",
+          "time_label": "2:00am",
+          "time_24h": "02:00",
+          "values": {
+            "actual": "0.5%",
+            "forecast": "0.4%",
+            "previous": "0.5%"
+          }
+        },
+        {
+          "date": "2025-09-19",
+          "weekday": "Fri",
+          "currency": "JPY",
+          "title": "BOJ Press Conference",
+          "time_label": "2:30am",
+          "time_24h": "02:30",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-19",
+          "weekday": "Fri",
+          "currency": "CAD",
+          "title": "Core Retail Sales m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "-1.2%",
+            "forecast": "-0.4%",
+            "previous": "2.2%"
+          }
+        },
+        {
+          "date": "2025-09-19",
+          "weekday": "Fri",
+          "currency": "CAD",
+          "title": "Retail Sales m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "-0.8%",
+            "forecast": "-0.6%",
+            "previous": "1.6%"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-20",
+      "weekday": "Sat",
+      "events": []
+    },
+    {
+      "date": "2025-09-21",
+      "weekday": "Sun",
+      "events": [
+        {
+          "date": "2025-09-21",
+          "weekday": "Sun",
+          "currency": "AUD",
+          "title": "RBA Gov Bullock Speaks",
+          "time_label": "9:00pm",
+          "time_24h": "21:00",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-21",
+          "weekday": "Sun",
+          "currency": "CNY",
+          "title": "1-y Loan Prime Rate",
+          "time_label": "9:00pm",
+          "time_24h": "21:00",
+          "values": {
+            "actual": "3.00%",
+            "forecast": "3.00%",
+            "previous": "3.00%"
+          }
+        },
+        {
+          "date": "2025-09-21",
+          "weekday": "Sun",
+          "currency": "CNY",
+          "title": "5-y Loan Prime Rate",
+          "time_label": "9:00pm",
+          "time_24h": "21:00",
+          "values": {
+            "actual": "3.50%",
+            "forecast": "3.50%",
+            "previous": "3.50%"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-22",
+      "weekday": "Mon",
+      "events": [
+        {
+          "date": "2025-09-22",
+          "weekday": "Mon",
+          "currency": "USD",
+          "title": "FOMC Member Miran Speaks",
+          "time_label": "12:00pm",
+          "time_24h": "12:00",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-22",
+          "weekday": "Mon",
+          "currency": "GBP",
+          "title": "BOE Gov Bailey Speaks",
+          "time_label": "2:00pm",
+          "time_24h": "14:00",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-22",
+          "weekday": "Mon",
+          "currency": "JPY",
+          "title": "Bank Holiday",
+          "time_label": "All Day",
+          "time_24h": null,
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-23",
+      "weekday": "Tue",
+      "events": [
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "EUR",
+          "title": "French Flash Manufacturing PMI",
+          "time_label": "3:15am",
+          "time_24h": "03:15",
+          "values": {
+            "actual": "48.1",
+            "forecast": "50.2",
+            "previous": "50.4"
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "EUR",
+          "title": "French Flash Services PMI",
+          "time_label": "3:15am",
+          "time_24h": "03:15",
+          "values": {
+            "actual": "48.9",
+            "forecast": "49.7",
+            "previous": "49.8"
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "EUR",
+          "title": "German Flash Manufacturing PMI",
+          "time_label": "3:30am",
+          "time_24h": "03:30",
+          "values": {
+            "actual": "48.5",
+            "forecast": "50.0",
+            "previous": "48.8"
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "EUR",
+          "title": "German Flash Services PMI",
+          "time_label": "3:30am",
+          "time_24h": "03:30",
+          "values": {
+            "actual": "52.5",
+            "forecast": "49.5",
+            "previous": "49.3"
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "EUR",
+          "title": "Flash Manufacturing PMI",
+          "time_label": "4:00am",
+          "time_24h": "04:00",
+          "values": {
+            "actual": "49.5",
+            "forecast": "50.7",
+            "previous": "50.7"
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "EUR",
+          "title": "Flash Services PMI",
+          "time_label": "4:00am",
+          "time_24h": "04:00",
+          "values": {
+            "actual": "51.4",
+            "forecast": "50.6",
+            "previous": "50.5"
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "GBP",
+          "title": "Flash Manufacturing PMI",
+          "time_label": "4:30am",
+          "time_24h": "04:30",
+          "values": {
+            "actual": "46.2",
+            "forecast": "47.1",
+            "previous": "47.0"
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "GBP",
+          "title": "Flash Services PMI",
+          "time_label": "4:30am",
+          "time_24h": "04:30",
+          "values": {
+            "actual": "51.9",
+            "forecast": "53.4",
+            "previous": "54.2"
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "USD",
+          "title": "Flash Manufacturing PMI",
+          "time_label": "9:45am",
+          "time_24h": "09:45",
+          "values": {
+            "actual": "52.0",
+            "forecast": "52.2",
+            "previous": "53.0"
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "USD",
+          "title": "Flash Services PMI",
+          "time_label": "9:45am",
+          "time_24h": "09:45",
+          "values": {
+            "actual": "53.9",
+            "forecast": "54.0",
+            "previous": "54.5"
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "USD",
+          "title": "President Trump Speaks",
+          "time_label": "9:50am",
+          "time_24h": "09:50",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "USD",
+          "title": "Richmond Manufacturing Index",
+          "time_label": "10:05am",
+          "time_24h": "10:05",
+          "values": {
+            "actual": "-17",
+            "forecast": "-5",
+            "previous": "-7"
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "USD",
+          "title": "Fed Chair Powell Speaks",
+          "time_label": "12:35pm",
+          "time_24h": "12:35",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "CAD",
+          "title": "BOC Gov Macklem Speaks",
+          "time_label": "2:15pm",
+          "time_24h": "14:15",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "USD",
+          "title": "President Trump Speaks",
+          "time_label": "7:20pm",
+          "time_24h": "19:20",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-23",
+          "weekday": "Tue",
+          "currency": "AUD",
+          "title": "CPI y/y",
+          "time_label": "9:30pm",
+          "time_24h": "21:30",
+          "values": {
+            "actual": "3.0%",
+            "forecast": "2.9%",
+            "previous": "2.8%"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-24",
+      "weekday": "Wed",
+      "events": [
+        {
+          "date": "2025-09-24",
+          "weekday": "Wed",
+          "currency": "EUR",
+          "title": "German ifo Business Climate",
+          "time_label": "4:00am",
+          "time_24h": "04:00",
+          "values": {
+            "actual": "87.7",
+            "forecast": "89.3",
+            "previous": "88.9"
+          }
+        },
+        {
+          "date": "2025-09-24",
+          "weekday": "Wed",
+          "currency": "USD",
+          "title": "New Home Sales",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": "800K",
+            "forecast": "650K",
+            "previous": "664K"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-25",
+      "weekday": "Thu",
+      "events": [
+        {
+          "date": "2025-09-25",
+          "weekday": "Thu",
+          "currency": "CHF",
+          "title": "SNB Monetary Policy Assessment",
+          "time_label": "3:30am",
+          "time_24h": "03:30",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-25",
+          "weekday": "Thu",
+          "currency": "CHF",
+          "title": "SNB Policy Rate",
+          "time_label": "3:30am",
+          "time_24h": "03:30",
+          "values": {
+            "actual": "0.00%",
+            "forecast": "0.00%",
+            "previous": "0.00%"
+          }
+        },
+        {
+          "date": "2025-09-25",
+          "weekday": "Thu",
+          "currency": "CHF",
+          "title": "SNB Press Conference",
+          "time_label": "4:00am",
+          "time_24h": "04:00",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-25",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "Final GDP q/q",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "3.8%",
+            "forecast": "3.3%",
+            "previous": "3.3%"
+          }
+        },
+        {
+          "date": "2025-09-25",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "Unemployment Claims",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "218K",
+            "forecast": "233K",
+            "previous": "232K"
+          }
+        },
+        {
+          "date": "2025-09-25",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "Core Durable Goods Orders m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "0.4%",
+            "forecast": "-0.1%",
+            "previous": "1.0%"
+          }
+        },
+        {
+          "date": "2025-09-25",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "Durable Goods Orders m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "2.9%",
+            "forecast": "-0.3%",
+            "previous": "-2.7%"
+          }
+        },
+        {
+          "date": "2025-09-25",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "Final GDP Price Index q/q",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "2.1%",
+            "forecast": "2.0%",
+            "previous": "2.0%"
+          }
+        },
+        {
+          "date": "2025-09-25",
+          "weekday": "Thu",
+          "currency": "USD",
+          "title": "Existing Home Sales",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": "4.00M",
+            "forecast": "3.96M",
+            "previous": "4.01M"
+          }
+        },
+        {
+          "date": "2025-09-25",
+          "weekday": "Thu",
+          "currency": "JPY",
+          "title": "Tokyo Core CPI y/y",
+          "time_label": "7:30pm",
+          "time_24h": "19:30",
+          "values": {
+            "actual": "2.5%",
+            "forecast": "2.8%",
+            "previous": "2.5%"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-26",
+      "weekday": "Fri",
+      "events": [
+        {
+          "date": "2025-09-26",
+          "weekday": "Fri",
+          "currency": "CAD",
+          "title": "GDP m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "0.2%",
+            "forecast": "0.1%",
+            "previous": "-0.1%"
+          }
+        },
+        {
+          "date": "2025-09-26",
+          "weekday": "Fri",
+          "currency": "USD",
+          "title": "Core PCE Price Index m/m",
+          "time_label": "8:30am",
+          "time_24h": "08:30",
+          "values": {
+            "actual": "0.2%",
+            "forecast": "0.2%",
+            "previous": "0.2%"
+          }
+        },
+        {
+          "date": "2025-09-26",
+          "weekday": "Fri",
+          "currency": "USD",
+          "title": "Revised UoM Consumer Sentiment",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": "55.1",
+            "forecast": "55.5",
+            "previous": "55.4"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-27",
+      "weekday": "Sat",
+      "events": [
+        {
+          "date": "2025-09-27",
+          "weekday": "Sat",
+          "currency": "NZD",
+          "title": "Daylight Saving Time Shift",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-28",
+      "weekday": "Sun",
+      "events": []
+    },
+    {
+      "date": "2025-09-29",
+      "weekday": "Mon",
+      "events": [
+        {
+          "date": "2025-09-29",
+          "weekday": "Mon",
+          "currency": "EUR",
+          "title": "Spanish Flash CPI y/y",
+          "time_label": "3:00am",
+          "time_24h": "03:00",
+          "values": {
+            "actual": "2.9%",
+            "forecast": "3.1%",
+            "previous": "2.7%"
+          }
+        },
+        {
+          "date": "2025-09-29",
+          "weekday": "Mon",
+          "currency": "USD",
+          "title": "Pending Home Sales m/m",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": "4.0%",
+            "forecast": "0.2%",
+            "previous": "-0.3%"
+          }
+        },
+        {
+          "date": "2025-09-29",
+          "weekday": "Mon",
+          "currency": "USD",
+          "title": "President Trump Speaks",
+          "time_label": "1:15pm",
+          "time_24h": "13:15",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-29",
+          "weekday": "Mon",
+          "currency": "CNY",
+          "title": "Manufacturing PMI",
+          "time_label": "9:30pm",
+          "time_24h": "21:30",
+          "values": {
+            "actual": "49.8",
+            "forecast": "49.6",
+            "previous": "49.4"
+          }
+        },
+        {
+          "date": "2025-09-29",
+          "weekday": "Mon",
+          "currency": "CNY",
+          "title": "Non-Manufacturing PMI",
+          "time_label": "9:30pm",
+          "time_24h": "21:30",
+          "values": {
+            "actual": "50.0",
+            "forecast": "50.3",
+            "previous": "50.3"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-09-30",
+      "weekday": "Tue",
+      "events": [
+        {
+          "date": "2025-09-30",
+          "weekday": "Tue",
+          "currency": "AUD",
+          "title": "Cash Rate",
+          "time_label": "12:30am",
+          "time_24h": "00:30",
+          "values": {
+            "actual": "3.60%",
+            "forecast": "3.60%",
+            "previous": "3.60%"
+          }
+        },
+        {
+          "date": "2025-09-30",
+          "weekday": "Tue",
+          "currency": "AUD",
+          "title": "RBA Rate Statement",
+          "time_label": "12:30am",
+          "time_24h": "00:30",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-30",
+          "weekday": "Tue",
+          "currency": "AUD",
+          "title": "RBA Press Conference",
+          "time_label": "1:30am",
+          "time_24h": "01:30",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-30",
+          "weekday": "Tue",
+          "currency": "EUR",
+          "title": "German Prelim CPI m/m",
+          "time_label": "All Day",
+          "time_24h": null,
+          "values": {
+            "actual": "0.2%",
+            "forecast": "0.2%",
+            "previous": "0.1%"
+          }
+        },
+        {
+          "date": "2025-09-30",
+          "weekday": "Tue",
+          "currency": "CAD",
+          "title": "Bank Holiday",
+          "time_label": "All Day",
+          "time_24h": null,
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-30",
+          "weekday": "Tue",
+          "currency": "EUR",
+          "title": "ECB President Lagarde Speaks",
+          "time_label": "8:50am",
+          "time_24h": "08:50",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-30",
+          "weekday": "Tue",
+          "currency": "USD",
+          "title": "JOLTS Job Openings",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": "7.23M",
+            "forecast": "7.19M",
+            "previous": "7.21M"
+          }
+        },
+        {
+          "date": "2025-09-30",
+          "weekday": "Tue",
+          "currency": "USD",
+          "title": "CB Consumer Confidence",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": "94.2",
+            "forecast": "96.0",
+            "previous": "97.8"
+          }
+        },
+        {
+          "date": "2025-09-30",
+          "weekday": "Tue",
+          "currency": "USD",
+          "title": "President Trump Speaks",
+          "time_label": "11:00am",
+          "time_24h": "11:00",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-09-30",
+          "weekday": "Tue",
+          "currency": "CNY",
+          "title": "Bank Holiday",
+          "time_label": "All Day",
+          "time_24h": null,
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-10-01",
+      "weekday": "Wed",
+      "events": [
+        {
+          "date": "2025-10-01",
+          "weekday": "Wed",
+          "currency": "EUR",
+          "title": "Core CPI Flash Estimate y/y",
+          "time_label": "5:00am",
+          "time_24h": "05:00",
+          "values": {
+            "actual": "2.3%",
+            "forecast": "2.3%",
+            "previous": "2.3%"
+          }
+        },
+        {
+          "date": "2025-10-01",
+          "weekday": "Wed",
+          "currency": "EUR",
+          "title": "CPI Flash Estimate y/y",
+          "time_label": "5:00am",
+          "time_24h": "05:00",
+          "values": {
+            "actual": "2.2%",
+            "forecast": "2.2%",
+            "previous": "2.0%"
+          }
+        },
+        {
+          "date": "2025-10-01",
+          "weekday": "Wed",
+          "currency": "All",
+          "title": "OPEC-JMMC Meetings",
+          "time_label": "All Day",
+          "time_24h": null,
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-10-01",
+          "weekday": "Wed",
+          "currency": "USD",
+          "title": "ADP Non-Farm Employment Change",
+          "time_label": "8:15am",
+          "time_24h": "08:15",
+          "values": {
+            "actual": "-32K",
+            "forecast": "52K",
+            "previous": "-3K"
+          }
+        },
+        {
+          "date": "2025-10-01",
+          "weekday": "Wed",
+          "currency": "USD",
+          "title": "ISM Manufacturing PMI",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": "49.1",
+            "forecast": "49.0",
+            "previous": "48.7"
+          }
+        },
+        {
+          "date": "2025-10-01",
+          "weekday": "Wed",
+          "currency": "USD",
+          "title": "ISM Manufacturing Prices",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": "61.9",
+            "forecast": "62.7",
+            "previous": "63.7"
+          }
+        },
+        {
+          "date": "2025-10-01",
+          "weekday": "Wed",
+          "currency": "CNY",
+          "title": "Bank Holiday",
+          "time_label": "All Day",
+          "time_24h": null,
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-10-02",
+      "weekday": "Thu",
+      "events": [
+        {
+          "date": "2025-10-02",
+          "weekday": "Thu",
+          "currency": "CHF",
+          "title": "CPI m/m",
+          "time_label": "2:30am",
+          "time_24h": "02:30",
+          "values": {
+            "actual": "-0.2%",
+            "forecast": "-0.2%",
+            "previous": "-0.1%"
+          }
+        },
+        {
+          "date": "2025-10-02",
+          "weekday": "Thu",
+          "currency": "CNY",
+          "title": "Bank Holiday",
+          "time_label": "All Day",
+          "time_24h": null,
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-10-02",
+          "weekday": "Thu",
+          "currency": "JPY",
+          "title": "BOJ Gov Ueda Speaks",
+          "time_label": "9:05pm",
+          "time_24h": "21:05",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-10-03",
+      "weekday": "Fri",
+      "events": [
+        {
+          "date": "2025-10-03",
+          "weekday": "Fri",
+          "currency": "EUR",
+          "title": "German Bank Holiday",
+          "time_label": "All Day",
+          "time_24h": null,
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-10-03",
+          "weekday": "Fri",
+          "currency": "EUR",
+          "title": "ECB President Lagarde Speaks",
+          "time_label": "5:40am",
+          "time_24h": "05:40",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-10-03",
+          "weekday": "Fri",
+          "currency": "GBP",
+          "title": "BOE Gov Bailey Speaks",
+          "time_label": "9:20am",
+          "time_24h": "09:20",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        },
+        {
+          "date": "2025-10-03",
+          "weekday": "Fri",
+          "currency": "USD",
+          "title": "ISM Services PMI",
+          "time_label": "10:00am",
+          "time_24h": "10:00",
+          "values": {
+            "actual": "50.0",
+            "forecast": "51.8",
+            "previous": "52.0"
+          }
+        }
+      ]
+    },
+    {
+      "date": "2025-10-04",
+      "weekday": "Sat",
+      "events": [
+        {
+          "date": "2025-10-04",
+          "weekday": "Sat",
+          "currency": "AUD",
+          "title": "Daylight Saving Time Shift",
+          "time_label": "12:00pm",
+          "time_24h": "12:00",
+          "values": {
+            "actual": null,
+            "forecast": null,
+            "previous": null
+          }
+        }
+      ]
+    }
+  ]
+}
