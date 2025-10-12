@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import argparse
 import html
+import io
 import json
+from cgi import FieldStorage
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Dict, Optional, Tuple
-from urllib.parse import parse_qs
+from typing import Dict, List, Optional, Tuple
 
 from favicon import render_head_links, try_load_asset
 
@@ -83,6 +84,10 @@ def render_form(
         font-weight: 600;
         cursor: pointer;
       }}
+      .hint {{
+        font-size: 0.85rem;
+        color: #555;
+      }}
       .error {{
         background: #ffe8e8;
         border: 1px solid #ff9b9b;
@@ -98,7 +103,7 @@ def render_form(
     <h1>Takvim Dönüştürücü</h1>
     <p>ForexFactory tarzı markdown verisini JSON şemasına çevir.</p>
     {error_html}
-    <form method='POST'>
+    <form method='POST' enctype='multipart/form-data'>
       <div class='row'>
         <label>
           Yıl
@@ -118,6 +123,11 @@ def render_form(
         </label>
       </div>
       <label>
+        Markdown Dosyası (opsiyonel)
+        <input type='file' name='markdown_file' accept='.md,text/plain'/>
+        <span class='hint'>Dosya seçilmezse aşağıdaki metin kutusundaki içerik kullanılır.</span>
+      </label>
+      <label>
         Markdown İçeriği
         <textarea name='markdown' required>{html.escape(initial_text)}</textarea>
       </label>
@@ -128,11 +138,28 @@ def render_form(
     return html_doc.encode("utf-8")
 
 
-def parse_form(body: bytes, content_type: str) -> Dict[str, str]:
-    if content_type.startswith("application/x-www-form-urlencoded"):
-        parsed = parse_qs(body.decode("utf-8", errors="replace"))
-        return {k: v[0] for k, v in parsed.items() if v}
-    return {}
+def parse_form(body: bytes, content_type: str, headers) -> Tuple[Dict[str, str], Dict[str, List[FieldStorage]]]:
+    environ = {
+        'REQUEST_METHOD': 'POST',
+        'CONTENT_TYPE': content_type,
+        'CONTENT_LENGTH': str(len(body)),
+    }
+    form = FieldStorage(
+        fp=io.BytesIO(body),
+        headers=headers,
+        environ=environ,
+        keep_blank_values=True,
+    )
+    field_values: Dict[str, List[str]] = {}
+    file_values: Dict[str, List[FieldStorage]] = {}
+    if form.list:
+        for item in form.list:
+            if item.filename:
+                file_values.setdefault(item.name, []).append(item)
+            else:
+                field_values.setdefault(item.name, []).append(item.value)
+    flat_fields = {k: v[-1] for k, v in field_values.items()}
+    return flat_fields, file_values
 
 def _sanitize_filename(name: str) -> str:
     cleaned = ''.join(ch for ch in name if ch.isalnum() or ch in ('-', '_', '.'))
@@ -179,8 +206,18 @@ class CalendarHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         content_type = self.headers.get("Content-Type", "")
         payload = self.rfile.read(length) if length > 0 else b""
-        fields = {**self.form_defaults, **parse_form(payload, content_type)}
+        field_data, file_data = parse_form(payload, content_type, self.headers)
+        fields = {**self.form_defaults, **field_data}
         markdown = fields.get("markdown", "")
+
+        file_items = file_data.get("markdown_file")
+        if file_items:
+            file_item = file_items[-1]
+            try:
+                file_item.file.seek(0)
+            except Exception:  # noqa: BLE001
+                pass
+            markdown = file_item.file.read().decode("utf-8", errors="replace")
 
         error = None
         try:
