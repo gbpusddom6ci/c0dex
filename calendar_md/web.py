@@ -126,7 +126,7 @@ def render_form(
       </label>
       <label>
         Markdown İçeriği
-        <textarea name='markdown' required>{html.escape(initial_text)}</textarea>
+        <textarea name='markdown'>{html.escape(initial_text)}</textarea>
       </label>
       <button type='submit'>JSON'a Dönüştür</button>
     </form>
