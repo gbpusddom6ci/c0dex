@@ -9,6 +9,7 @@ Bu rehber, projedeki tüm alt uygulamaları (app321, app48, app72, app80, app120
 - **2025-08 – IOU sinyal motoru:** IOV’e paralel olarak IOU (aynı işaretli OC/PrevOC) algılama eklendi.
 - **2025-08 – IOV sinyal motoru:** OC/PrevOC limit eşikleri ve işaret kontrolleriyle “Inverse Offset Value” mumları tanımlandı.
 - **2025-07 – app120 birleşik web arayüzü:** 120m analiz, DC listesi, offset matrisi ve 60→120 converter tek arayüzde birleştirildi.
+- **2025-09 – IOU XYZ filtresi & haber entegrasyonu:** Tüm IOU sekmelerine opsiyonel XYZ filtresi eklendi; tatiller, all-day haberler ve app72’nin 16:48/18:00/19:12/20:24 slotları özel olarak ele alınır.
 - **2025-06 – app80 & app72 converter’ları:** 20→80 ve 12→72 dakikalık dönüştürücüler web ve CLI olarak eklendi.
 - **2025-05 – app48 sentetik mum desteği:** Piyasa kapanış aralığını korumak için 18:00 ve 18:48 sentetik mumları eklendi.
 - **Daha eski çekirdek:** app321 (60m) sayımı, DC tespiti, offset matrisi ve tahmin desteği.
@@ -177,6 +178,15 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 ### 5.3 Dağıtım Dosyaları
 - `Procfile` ve `render.yaml` Render.com dağıtımı için örnek konfigürasyon sağlar.
 - `Dockerfile` minimal Python imajıyla tüm web servislerini başlatmaya uygun temel sunar.
+
+### 5.4 IOU Haber Akışı & XYZ Filtresi (2025-09)
+- **Checkbox:** app48/app72/app80/app120/app321 IOU formlarında “XYZ kümesi (haber filtreli)” seçeneği bulunur. İşaretlendiğinde haber taşımayan offsetler elenir ve kalanlar kart üst bilgisinde `XYZ Kümesi` satırıyla listelenir.
+- **Haber kaynağı (`news_loader.py`):** JSON takvim dosyalarında `time_24h` yoksa `time`, `time_text`, `time_label`, `session` alanlarını dener. `"All Day"` / `all_day=true` kayıtları gün bazında yakalar, `recent-null` penceresi null actual taşıyan önceki olayları dahil eder.
+- **Hücre formatı:** Haber sütunu `Var`, `Holiday` veya `Yok` ile başlar. Tatil satırları sadece bilgi amaçlıdır; grafiksel olarak listelenir ama offset elenmesini tetiklemez.
+- **Tatiller:** Başlıkta “holiday” geçen olaylar `effective_news=False` sayılır. Sadece tatil içeren bir offset, XYZ kümesinde tutulur; satır `Holiday<br>All Day Bank Holiday (holiday)` gibi görünür.
+- **All-day haberler:** Zaman etiketi “All Day – Başlık” formatıyla yazılır. Tatil dışı all-day olayları offset’i korur.
+- **17:xx slot kuralı (app72):** `SPECIAL_SLOT_TIMES = {16:48, 18:00, 19:12, 20:24}`. Haber listesi boş olsa bile bu saatler “Kural slot HH:MM” notuyla haber var kabul edilir ve elenmez. Slotta tatil varsa nötr kalır; yalnızca gerçek olmayan tatiller filtreyi tetiklemez.
+- **Boş haberler:** Haber bulunmazsa hücre `Yok` olur ve offset elenir. Böylece yalnızca haber (veya özel slot) olmayan kombinasyonlar XYZ dışına atılır.
 
 ## 6. Veri Setleri ve Örnek Dosyalar
 - `x.csv`, `x222.csv`, `test.csv`, `test48.csv`, `test_120m.csv`, `test_offset.csv` – Test veya demo akışları.
