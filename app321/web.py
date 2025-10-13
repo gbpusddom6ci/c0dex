@@ -646,23 +646,26 @@ class AppHandler(BaseHTTPRequestHandler):
                     if hit.used_dc:
                         dc_info += " (rule)"
                     news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP, null_back_minutes=60)
-                    has_news = bool(news_hits)
-                    if has_news:
-                        detail_lines = []
-                        for ev in news_hits:
-                            title_html = html.escape(ev.get("title", ""))
-                            if ev.get("all_day"):
-                                line = f"All Day - {title_html}"
-                            else:
-                                time_html = html.escape(ev.get("time") or "-")
-                                line = f"{time_html} {title_html}"
-                            if ev.get("window") == "recent-null":
-                                line += " (null)"
-                            detail_lines.append(line)
-                        news_cell_html = "Var<br>" + "<br>".join(detail_lines)
-                    else:
-                        news_cell_html = "Yok"
-                    if xyz_enabled and not has_news:
+                    detail_lines: List[str] = []
+                    effective_news = False
+                    for ev in news_hits:
+                        title = ev.get("title", "")
+                        title_html = html.escape(title)
+                        if ev.get("all_day"):
+                            time_part = "All Day"
+                        else:
+                            time_part = html.escape(ev.get("time") or "-")
+                        line = f"{time_part} {title_html}"
+                        if ev.get("window") == "recent-null":
+                            line += " (null)"
+                        is_holiday = "holiday" in title.lower()
+                        if is_holiday:
+                            line += " (holiday)"
+                        else:
+                            effective_news = True
+                        detail_lines.append(line)
+                    news_cell_html = "Var<br>" + "<br>".join(detail_lines) if detail_lines else "Yok"
+                    if xyz_enabled and not effective_news:
                         offset_has_non_news[item.offset] = True
                         rows.append(
                             f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
