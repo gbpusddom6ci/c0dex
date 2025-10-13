@@ -496,16 +496,21 @@ class App72Handler(BaseHTTPRequestHandler):
                             if hit.used_dc:
                                 dc_info += " (rule)"
                             news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP, null_back_minutes=60)
-                            if news_hits:
-                                has_news = True
-                                detail_lines = [
-                                    f"{html.escape(ev['time'])} {html.escape(ev['title'])}"
-                                    + (" (null)" if ev.get("window") == "recent-null" else "")
-                                    for ev in news_hits
-                                ]
+                            has_news = bool(news_hits)
+                            if has_news:
+                                detail_lines = []
+                                for ev in news_hits:
+                                    title_html = html.escape(ev.get("title", ""))
+                                    if ev.get("all_day"):
+                                        line = f"All Day - {title_html}"
+                                    else:
+                                        time_html = html.escape(ev.get("time") or "-")
+                                        line = f"{time_html} {title_html}"
+                                    if ev.get("window") == "recent-null":
+                                        line += " (null)"
+                                    detail_lines.append(line)
                                 news_cell_html = "Var<br>" + "<br>".join(detail_lines)
                             else:
-                                has_news = False
                                 news_cell_html = "Yok"
                             if xyz_enabled and not has_news:
                                 offset_has_non_news[item.offset] = True

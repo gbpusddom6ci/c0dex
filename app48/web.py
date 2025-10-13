@@ -318,6 +318,12 @@ def render_iou_index() -> bytes:
             <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
           </div>
         </div>
+        <div class='row' style='margin-top:12px; gap:32px;'>
+          <label style='display:flex; align-items:center; gap:8px;'>
+            <input type='checkbox' name='xyz_mode' />
+            <span>XYZ kümesi (haber filtreli)</span>
+          </label>
+        </div>
         <div style='margin-top:12px;'>
           <button type='submit'>IOU Tara</button>
         </div>
@@ -462,6 +468,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
             if self.path == "/iou":
                 limit_raw = (form.get("limit", {}).get("value") or "0").strip()
+                xyz_enabled = "xyz_mode" in form
                 try:
                     limit_val = float(limit_raw)
                 except Exception:
@@ -496,6 +503,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     offset_counts: List[str] = []
                     total_hits = 0
                     rows: List[str] = []
+                    offset_has_non_news: Dict[int, bool] = {}
                     for item in report.offsets:
                         off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
                         status = item.offset_status or "-"
@@ -517,21 +525,37 @@ class AppHandler(BaseHTTPRequestHandler):
                             if hit.used_dc:
                                 dc_info += " (rule)"
                             news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP, null_back_minutes=60)
-                            if news_hits:
-                                detail_lines = [
-                                    f"{html.escape(ev['time'])} {html.escape(ev['title'])}"
-                                    + (" (null)" if ev.get("window") == "recent-null" else "")
-                                    for ev in news_hits
-                                ]
+                            has_news = bool(news_hits)
+                            if has_news:
+                                detail_lines = []
+                                for ev in news_hits:
+                                    title_html = html.escape(ev.get("title", ""))
+                                    if ev.get("all_day"):
+                                        line = f"All Day - {title_html}"
+                                    else:
+                                        time_html = html.escape(ev.get("time") or "-")
+                                        line = f"{time_html} {title_html}"
+                                    if ev.get("window") == "recent-null":
+                                        line += " (null)"
+                                    detail_lines.append(line)
                                 news_cell_html = "Var<br>" + "<br>".join(detail_lines)
                             else:
                                 news_cell_html = "Yok"
+                            if xyz_enabled and not has_news:
+                                offset_has_non_news[item.offset] = True
                             rows.append(
                                 f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
                                 f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"
                                 f"<td>{html.escape(prev_label)}</td><td>{tag}</td><td>{dc_info}</td>"
                                 f"<td>{news_cell_html}</td></tr>"
                             )
+
+                    xyz_line = ""
+                    if xyz_enabled:
+                        base_offsets = [-3, -2, -1, 0, 1, 2, 3]
+                        xyz_offsets = [o for o in base_offsets if not offset_has_non_news.get(o, False)]
+                        xyz_text = ", ".join((f"+{o}" if o > 0 else str(o)) for o in xyz_offsets) if xyz_offsets else "-"
+                        xyz_line = f"<div><strong>XYZ Kümesi:</strong> {html.escape(xyz_text)}</div>"
 
                     info = (
                         f"<div class='card'>"
@@ -545,6 +569,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
                         f"<div><strong>Offset IOU sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
                         f"<div><strong>Toplam IOU:</strong> {total_hits}</div>"
+                        f"{xyz_line}"
                         f"<div><strong>Sentetik eklenen:</strong> {added}</div>"
                         f"</div>"
                     )

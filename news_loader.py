@@ -80,16 +80,38 @@ def load_news_events() -> List[Dict[str, Any]]:
                 if not isinstance(event, dict):
                     continue
 
-                time_str = event.get("time_24h")
                 title = (event.get("title") or "").strip()
-
-                if not (isinstance(time_str, str) and len(time_str) == 5 and time_str[2] == ":" and title):
+                if not title:
                     continue
 
-                try:
-                    event_ts = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
-                except ValueError:
-                    continue
+                raw_time = event.get("time_24h")
+                if not (isinstance(raw_time, str) and raw_time.strip()):
+                    for alt_key in ("time", "time_text", "session"):
+                        alt_val = event.get(alt_key)
+                        if isinstance(alt_val, str) and alt_val.strip():
+                            raw_time = alt_val
+                            break
+
+                time_str = (raw_time or "").strip()
+                lowered = time_str.lower()
+                is_all_day = bool(event.get("all_day"))
+                if not is_all_day and lowered in {"all day", "all-day"}:
+                    is_all_day = True
+
+                if is_all_day:
+                    try:
+                        event_ts = datetime.strptime(date_str, "%Y-%m-%d")
+                    except ValueError:
+                        continue
+                    display_time = "All Day"
+                else:
+                    if not (len(time_str) == 5 and time_str[2] == ":"):
+                        continue
+                    try:
+                        event_ts = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+                    except ValueError:
+                        continue
+                    display_time = time_str
 
                 values = event.get("values") or {}
 
@@ -105,9 +127,11 @@ def load_news_events() -> List[Dict[str, Any]]:
                 events.append(
                     {
                         "timestamp": event_ts,
-                        "time": time_str,
+                        "date": event_ts.date(),
+                        "time": display_time,
                         "title": title,
                         "has_null_value": has_null_value,
+                        "all_day": is_all_day,
                     }
                 )
 
@@ -138,6 +162,10 @@ def find_news_for_timestamp(
     matches: List[Dict[str, Any]] = []
     for event in events:
         event_ts = event["timestamp"]
+        if event.get("all_day"):
+            if event_ts.date() == ts.date():
+                matches.append({**event, "window": "all-day"})
+            continue
         if ts <= event_ts < window_end:
             matches.append({**event, "window": "forward"})
             continue

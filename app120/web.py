@@ -330,6 +330,12 @@ def render_iou_index() -> bytes:
             <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
           </div>
         </div>
+        <div class='row' style='margin-top:12px; gap:32px;'>
+          <label style='display:flex; align-items:center; gap:8px;'>
+            <input type='checkbox' name='xyz_mode' />
+            <span>XYZ kümesi (haber filtreli)</span>
+          </label>
+        </div>
         <div style='margin-top:12px;'>
           <button type='submit'>IOU Tara</button>
         </div>
@@ -520,8 +526,10 @@ class App120Handler(BaseHTTPRequestHandler):
                     limit_val = float(limit_raw)
                 except Exception:
                     limit_val = 0.0
+                limit_val = abs(limit_val)
                 detector = detect_iov_candles if self.path == "/iov" else detect_iou_candles
                 metric_label = "IOV" if self.path == "/iov" else "IOU"
+                xyz_enabled = metric_label == "IOU" and "xyz_mode" in form
 
                 sections: List[str] = []
                 for entry in files:
@@ -532,6 +540,7 @@ class App120Handler(BaseHTTPRequestHandler):
                     offset_counts = []
                     total_hits = 0
                     rows_html = []
+                    offset_has_non_news: Dict[int, bool] = {}
                     for item in report.offsets:
                         off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
                         status = item.offset_status or "-"
@@ -563,20 +572,36 @@ class App120Handler(BaseHTTPRequestHandler):
 
                                 if metric_label == "IOU":
                                     news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP, null_back_minutes=60)
-                                    if news_hits:
-                                        detail_lines = [
-                                            f"{html.escape(ev['time'])} {html.escape(ev['title'])}"
-                                            + (" (null)" if ev.get("window") == "recent-null" else "")
-                                            for ev in news_hits
-                                        ]
+                                    has_news = bool(news_hits)
+                                    if has_news:
+                                        detail_lines = []
+                                        for ev in news_hits:
+                                            title_html = html.escape(ev.get("title", ""))
+                                            if ev.get("all_day"):
+                                                line = f"All Day - {title_html}"
+                                            else:
+                                                time_html = html.escape(ev.get("time") or "-")
+                                                line = f"{time_html} {title_html}"
+                                            if ev.get("window") == "recent-null":
+                                                line += " (null)"
+                                            detail_lines.append(line)
                                         news_cell_html = "Var<br>" + "<br>".join(detail_lines)
                                     else:
                                         news_cell_html = "Yok"
+                                    if xyz_enabled and not has_news:
+                                        offset_has_non_news[item.offset] = True
                                     cells.append(f"<td>{news_cell_html}</td>")
 
                                 rows_html.append("<tr>" + "".join(cells) + "</tr>")
 
                     filename = entry.get("filename") or "uploaded.csv"
+                    xyz_line = ""
+                    if xyz_enabled:
+                        base_offsets = [-3, -2, -1, 0, 1, 2, 3]
+                        xyz_offsets = [o for o in base_offsets if not offset_has_non_news.get(o, False)]
+                        xyz_text = ", ".join((f"+{o}" if o > 0 else str(o)) for o in xyz_offsets) if xyz_offsets else "-"
+                        xyz_line = f"<div><strong>XYZ Kümesi:</strong> {html.escape(xyz_text)}</div>"
+
                     info = (
                         f"<div class='card'>"
                         f"<h3>{html.escape(filename)}</h3>"
@@ -590,6 +615,7 @@ class App120Handler(BaseHTTPRequestHandler):
                         f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
                         f"<div><strong>Offset {metric_label} sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
                         f"<div><strong>Toplam {metric_label}:</strong> {total_hits}</div>"
+                        f"{xyz_line}"
                         f"</div>"
                     )
 
