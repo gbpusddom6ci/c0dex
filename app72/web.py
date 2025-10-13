@@ -518,7 +518,11 @@ class App72Handler(BaseHTTPRequestHandler):
                             if slot_protected and not news_hits:
                                 effective_news = True
                                 detail_lines.append(f"Kural slot {hit.ts.strftime('%H:%M')}")
-                            news_cell_html = "Var<br>" + "<br>".join(detail_lines) if detail_lines else "Yok"
+                            if detail_lines:
+                                prefix = "Var" if effective_news else "Holiday"
+                                news_cell_html = prefix + "<br>" + "<br>".join(detail_lines)
+                            else:
+                                news_cell_html = "Yok"
                             if xyz_enabled and not effective_news:
                                 offset_has_non_news[item.offset] = True
                             rows.append(
