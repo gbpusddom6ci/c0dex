@@ -30,7 +30,7 @@ from .main import (
 )
 from email.parser import BytesParser
 from email.policy import default as email_default
-from datetime import timedelta
+from datetime import timedelta, time as dtime
 
 
 from news_loader import find_news_for_timestamp
@@ -506,14 +506,18 @@ class App72Handler(BaseHTTPRequestHandler):
                                 else:
                                     time_part = html.escape(ev.get("time") or "-")
                                 line = f"{time_part} {title_html}"
+                                is_holiday = "holiday" in title.lower()
                                 if ev.get("window") == "recent-null":
                                     line += " (null)"
-                                is_holiday = "holiday" in title.lower()
                                 if is_holiday:
                                     line += " (holiday)"
                                 else:
                                     effective_news = True
                                 detail_lines.append(line)
+                            slot_protected = hit.ts.time() in SPECIAL_SLOT_TIMES
+                            if slot_protected and not news_hits:
+                                effective_news = True
+                                detail_lines.append(f"Kural slot {hit.ts.strftime('%H:%M')}")
                             news_cell_html = "Var<br>" + "<br>".join(detail_lines) if detail_lines else "Yok"
                             if xyz_enabled and not effective_news:
                                 offset_has_non_news[item.offset] = True
@@ -815,3 +819,9 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+SPECIAL_SLOT_TIMES = {
+    dtime(hour=16, minute=48),
+    dtime(hour=18, minute=0),
+    dtime(hour=19, minute=12),
+    dtime(hour=20, minute=24),
+}
