@@ -86,7 +86,7 @@ def load_news_events() -> List[Dict[str, Any]]:
 
                 raw_time = event.get("time_24h")
                 if not (isinstance(raw_time, str) and raw_time.strip()):
-                    for alt_key in ("time", "time_text", "session"):
+                    for alt_key in ("time", "time_text", "time_label", "session"):
                         alt_val = event.get(alt_key)
                         if isinstance(alt_val, str) and alt_val.strip():
                             raw_time = alt_val
