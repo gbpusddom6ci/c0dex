@@ -73,6 +73,7 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
 - Başlangıç noktası: yakalanan ilk 18:00 mumu.
 - Offset değerleri `-3..+3` arasıdır; timeframe dakika değeriyle çarpılarak hedef zaman belirlenir.
 - Hedef mum bulunamazsa (veri yoksa) tahmini saatler `pred` etiketiyle raporlanır.
+- Hafta kapanışı/başlangıcı: app80 için Pazar açılışı 18:00, kapanış ise Cuma 16:40 olarak kabul edilir; tahmin motoru hafta sonu boşluğunu bu saatlere göre atlar.
 
 **Pozitif Offset DC Akışı:** 18:00 baz mumundan itibaren offset adımları, sequence sayımındaki gibi DC olmayan mumlar üzerinden ilerletilir. Örnek akış (`jun01.csv`):
 
