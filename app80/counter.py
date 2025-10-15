@@ -165,6 +165,15 @@ def compute_dc_flags(candles: List[Candle]) -> List[Optional[bool]]:
                         is_week_close = True
             if is_week_close:
                 cond = False
+        # Cuma 16:40 (piyasa kapanışı) DC olarak işaretlenmez; özellikle haftanın ilk kapanışı için
+        if cur.ts.weekday() == 4 and cur.ts.hour == 16 and cur.ts.minute == 40:
+            is_week_close = True
+            if i + 1 < len(candles):
+                gap_minutes = (candles[i + 1].ts - cur.ts).total_seconds() / 60
+                if gap_minutes <= MINUTES_PER_STEP:
+                    is_week_close = False
+            if is_week_close:
+                cond = False
         prev_flag = bool(flags[i - 1]) if flags[i - 1] is not None else False
         if prev_flag and cond:
             cond = False
@@ -654,8 +663,8 @@ def fmt_pip(delta: Optional[float]) -> str:
 
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(
-        prog="app72.counter",
-        description="72m sayımı (gap yok) ve DC istisnası yok",
+        prog="app80.counter",
+        description="80m sayımı (gap yok) ve DC istisnası yok",
     )
     p.add_argument("--csv", required=True, help="CSV dosya yolu")
     p.add_argument("--sequence", choices=list(SEQUENCES.keys()), default="S2", help="Kullanılacak dizi: S1 veya S2")

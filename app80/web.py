@@ -145,7 +145,7 @@ def render_analyze_index() -> bytes:
           </div>
           <div>
             <label>Zaman Dilimi</label>
-            <div>72m</div>
+            <div>80m</div>
           </div>
           <div>
             <label>Girdi TZ</label>
@@ -200,7 +200,7 @@ def render_dc_index() -> bytes:
           </div>
           <div>
             <label>Zaman Dilimi</label>
-            <div>72m</div>
+            <div>80m</div>
           </div>
           <div>
             <label>Girdi TZ</label>
@@ -232,7 +232,7 @@ def render_matrix_index() -> bytes:
           </div>
           <div>
             <label>Zaman Dilimi</label>
-            <div>72m</div>
+            <div>80m</div>
           </div>
           <div>
             <label>Girdi TZ</label>
@@ -433,8 +433,8 @@ class App80Handler(BaseHTTPRequestHandler):
                     base, _ = filename.rsplit(".", 1)
                     download_name = base + "_80m.csv"
                 else:
-                    download_name = filename + "_72m.csv"
-                download_name = download_name.strip().replace('"', '') or "converted_72m.csv"
+                    download_name = filename + "_80m.csv"
+                download_name = download_name.strip().replace('"', '') or "converted_80m.csv"
 
                 self.send_response(200)
                 self.send_header("Content-Type", "text/csv; charset=utf-8")
@@ -684,7 +684,7 @@ class App80Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(page("app72 sonuçlar", body, active_tab="analyze"))
+                self.wfile.write(page("app80 sonuçlar", body, active_tab="analyze"))
                 return
 
             dc_flags = compute_dc_flags(candles)
@@ -704,7 +704,7 @@ class App80Handler(BaseHTTPRequestHandler):
                 info = (
                     f"<div class='card'>"
                     f"<div><strong>Data:</strong> {len(candles)} candles</div>"
-                    f"<div><strong>Zaman Dilimi:</strong> 72m</div>"
+                    f"<div><strong>Zaman Dilimi:</strong> 80m</div>"
                     f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
                     f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
                     f"<div><strong>DC count:</strong> {count}</div>"
@@ -714,7 +714,7 @@ class App80Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(page("app72 DC List", body, active_tab="dc"))
+                self.wfile.write(page("app80 DC List", body, active_tab="dc"))
                 return
 
             if self.path == "/matrix":
@@ -787,7 +787,7 @@ class App80Handler(BaseHTTPRequestHandler):
                 info = (
                     f"<div class='card'>"
                     f"<div><strong>Data:</strong> {len(candles)} candles</div>"
-                    f"<div><strong>Zaman Dilimi:</strong> 72m</div>"
+                    f"<div><strong>Zaman Dilimi:</strong> 80m</div>"
                     f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
                     f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
                     f"<div><strong>Sequence:</strong> {html.escape(sequence)}</div>"
@@ -799,7 +799,7 @@ class App80Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(page("app72 Matrix", body, active_tab="matrix"))
+                self.wfile.write(page("app80 Matrix", body, active_tab="matrix"))
                 return
 
             raise ValueError("Bilinmeyen istek")

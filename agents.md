@@ -63,7 +63,7 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
 - app321: 13:00–20:00 arasında DC’ler normal mum kabul edilir.
 - app48: 13:12–19:36 arasında DC’ler normal mum kabul edilir.
 - app72: 18:00 (Pazar dahil), Cuma 16:48, (Pazar hariç) 19:12 ve 20:24, Cuma 16:00 DC olamaz.
-- app80: (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:00 DC olamaz.
+- app80: (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:40 (hafta kapanışı, ilk hafta dahil) DC olamaz.
 - app120: İstisna yok; yalnızca kapsayıcı kural uygulanır. Cuma 16:00 hafta kapanışı DC sayılmaz.
 
 **Kapsayıcı Kural:** Bir sequence adımı DC’ye denk gelirse zaman damgası o DC mumuna yazılır.
@@ -143,7 +143,7 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
 ### 4.2 app80 – 80 Dakikalık Analiz
 - **Üç ana modül:** `counter.py`, `main.py` (20→80 converter), `web.py` (port 2180, sekmeler: Analiz, DC List, Matrix, IOU Tarama, 20→80 Converter).
 - **IOU Tarama:** Limit, ± tolerans (varsayılan 0.005) ve dizi seçimiyle aynı işaretli OC/PrevOC ikililerini çoklu CSV desteğiyle dosya bazında listeler; yalnızca `|OC|` ve `|PrevOC|` değerleri `limit + tolerans` eşiğini geçen satırlar raporlanır.
-- **DC Kısıtları:** (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:00 DC olamaz. Önceki DC yasağı geçerlidir.
+- **DC Kısıtları:** (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:40 (hafta kapanışı, ilk hafta dahil) DC olamaz. Önceki DC yasağı geçerlidir; diğer günlerdeki 16:40 mumları normal DC kuralına tabidir.
 - **Converter:** 4 × 20m mum → 1 × 80m mum. Open=ilk open, Close=son close, High/Low blok içindeki max/min.
 - **CLI Örnekleri:**
   ```bash
