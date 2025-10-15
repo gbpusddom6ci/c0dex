@@ -7,6 +7,7 @@ from typing import List, Optional, Tuple, Dict, Callable
 
 MINUTES_PER_STEP = 120
 DEFAULT_START_TOD = dtime(hour=18, minute=0)
+IOU_TOLERANCE = 0.005
 
 
 @dataclass
@@ -545,6 +546,7 @@ def _detect_signal_candles(
     seq_values = SEQUENCES[seq_key][:]
     skip_values = {1, 3} if seq_key == "S1" else {1, 5}
     threshold = abs(limit)
+    effective_threshold = max(0.0, threshold - IOU_TOLERANCE)
 
     base_idx, base_status = find_start_index(candles, DEFAULT_START_TOD)
     base_ts = candles[base_idx].ts if 0 <= base_idx < len(candles) else None
@@ -564,7 +566,7 @@ def _detect_signal_candles(
                 continue
             oc = candles[idx].close - candles[idx].open
             prev_oc = candles[idx - 1].close - candles[idx - 1].open
-            if abs(oc) < threshold or abs(prev_oc) < threshold:
+            if abs(oc) < effective_threshold or abs(prev_oc) < effective_threshold:
                 continue
             if not condition(oc, prev_oc):
                 continue

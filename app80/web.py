@@ -34,6 +34,8 @@ from datetime import timedelta
 
 from news_loader import find_news_for_timestamp
 
+IOU_TOLERANCE = 0.005
+
 
 def load_candles_from_text(text: str, candle_cls: Type) -> List:
     sample = text[:4096]
@@ -447,6 +449,7 @@ class App80Handler(BaseHTTPRequestHandler):
                 except Exception:
                     limit_val = 0.0
                 limit_val = abs(limit_val)
+                limit_margin = limit_val + IOU_TOLERANCE
 
                 sections: List[str] = []
                 for entry in files_list:
@@ -515,7 +518,10 @@ class App80Handler(BaseHTTPRequestHandler):
                                 detail_lines.append(line)
                             news_cell_html = "Var<br>" + "<br>".join(detail_lines) if detail_lines else "Yok"
                             if xyz_enabled and not effective_news:
-                                offset_has_non_news[item.offset] = True
+                                oc_abs = abs(hit.oc)
+                                prev_abs = abs(hit.prev_oc)
+                                if oc_abs > limit_margin or prev_abs > limit_margin:
+                                    offset_has_non_news[item.offset] = True
                             rows.append(
                                 f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
                                 f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"

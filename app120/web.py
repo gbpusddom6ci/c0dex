@@ -35,6 +35,8 @@ from datetime import timedelta
 
 from news_loader import find_news_for_timestamp
 
+IOU_TOLERANCE = 0.005
+
 
 def load_candles_from_text(text: str, candle_cls: Type) -> List:
     sample = text[:4096]
@@ -527,6 +529,7 @@ class App120Handler(BaseHTTPRequestHandler):
                 except Exception:
                     limit_val = 0.0
                 limit_val = abs(limit_val)
+                limit_margin = limit_val + IOU_TOLERANCE
                 detector = detect_iov_candles if self.path == "/iov" else detect_iou_candles
                 metric_label = "IOV" if self.path == "/iov" else "IOU"
                 xyz_enabled = metric_label == "IOU" and "xyz_mode" in form
@@ -592,7 +595,10 @@ class App120Handler(BaseHTTPRequestHandler):
                                         detail_lines.append(line)
                                     news_cell_html = "Var<br>" + "<br>".join(detail_lines) if detail_lines else "Yok"
                                     if xyz_enabled and not effective_news:
-                                        offset_has_non_news[item.offset] = True
+                                        oc_abs = abs(hit.oc)
+                                        prev_abs = abs(hit.prev_oc)
+                                        if oc_abs > limit_margin or prev_abs > limit_margin:
+                                            offset_has_non_news[item.offset] = True
                                     cells.append(f"<td>{news_cell_html}</td>")
 
                                 rows_html.append("<tr>" + "".join(cells) + "</tr>")

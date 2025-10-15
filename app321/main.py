@@ -19,6 +19,8 @@ SEQUENCES: Dict[str, List[int]] = {
     "S2": [1, 5, 9, 17, 25, 37, 49, 65, 81, 101, 121, 145, 169],
 }
 
+IOU_TOLERANCE = 0.005
+
 
 def normalize_key(name: str) -> str:
     return name.strip().strip('"').strip("'").lower()
@@ -503,6 +505,7 @@ def _detect_signal_candles(
     seq_values = SEQUENCES[seq_key][:]
     skip_values = {1, 3} if seq_key == "S1" else {1, 5}
     threshold = abs(limit)
+    effective_threshold = max(0.0, threshold - IOU_TOLERANCE)
 
     start_tod = dtime(hour=18, minute=0)
     base_idx, base_status = find_start_index(candles, start_tod)
@@ -523,7 +526,7 @@ def _detect_signal_candles(
                 continue
             oc = candles[idx].close - candles[idx].open
             prev_oc = candles[idx - 1].close - candles[idx - 1].open
-            if abs(oc) < threshold or abs(prev_oc) < threshold:
+            if abs(oc) < effective_threshold or abs(prev_oc) < effective_threshold:
                 continue
             if not condition(oc, prev_oc):
                 continue

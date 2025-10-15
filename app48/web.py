@@ -29,6 +29,7 @@ from email.policy import default as email_default
 from news_loader import find_news_for_timestamp
 
 MINUTES_PER_STEP = 48
+IOU_TOLERANCE = 0.005
 
 
 def load_candles_from_text(text: str) -> List[Candle]:
@@ -474,6 +475,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 except Exception:
                     limit_val = 0.0
                 limit_val = abs(limit_val)
+                limit_margin = limit_val + IOU_TOLERANCE
 
                 sequence = (form.get("sequence", {}).get("value") or "S2").strip() or "S2"
                 tz_value = tz_s or "UTC-5"
@@ -545,7 +547,10 @@ class AppHandler(BaseHTTPRequestHandler):
                                 detail_lines.append(line)
                             news_cell_html = "Var<br>" + "<br>".join(detail_lines) if detail_lines else "Yok"
                             if xyz_enabled and not effective_news:
-                                offset_has_non_news[item.offset] = True
+                                oc_abs = abs(hit.oc)
+                                prev_abs = abs(hit.prev_oc)
+                                if oc_abs > limit_margin or prev_abs > limit_margin:
+                                    offset_has_non_news[item.offset] = True
                             rows.append(
                                 f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
                                 f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"

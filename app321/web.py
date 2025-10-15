@@ -27,6 +27,7 @@ from datetime import timedelta
 from news_loader import find_news_for_timestamp
 
 MINUTES_PER_STEP = 60
+IOU_TOLERANCE = 0.005
 
 
 def load_candles_from_text(text: str) -> List[Candle]:
@@ -599,6 +600,7 @@ class AppHandler(BaseHTTPRequestHandler):
             except Exception:
                 limit_val = 0.0
             limit_val = abs(limit_val)
+            limit_margin = limit_val + IOU_TOLERANCE
             xyz_enabled = "xyz_mode" in form
 
             tz_norm = tz_value.upper().replace(" ", "")
@@ -643,30 +645,33 @@ class AppHandler(BaseHTTPRequestHandler):
                         oc_label = format_pip(hit.oc)
                         prev_label = format_pip(hit.prev_oc)
                         dc_info = "True" if hit.dc_flag else "False"
-                    if hit.used_dc:
-                        dc_info += " (rule)"
-                    news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP, null_back_minutes=60)
-                    detail_lines: List[str] = []
-                    effective_news = False
-                    for ev in news_hits:
-                        title = ev.get("title", "")
-                        title_html = html.escape(title)
-                        if ev.get("all_day"):
-                            time_part = "All Day"
-                        else:
-                            time_part = html.escape(ev.get("time") or "-")
-                        line = f"{time_part} {title_html}"
-                        if ev.get("window") == "recent-null":
-                            line += " (null)"
-                        is_holiday = "holiday" in title.lower()
-                        if is_holiday:
-                            line += " (holiday)"
-                        else:
-                            effective_news = True
-                        detail_lines.append(line)
-                    news_cell_html = "Var<br>" + "<br>".join(detail_lines) if detail_lines else "Yok"
-                    if xyz_enabled and not effective_news:
-                        offset_has_non_news[item.offset] = True
+                        if hit.used_dc:
+                            dc_info += " (rule)"
+                        news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP, null_back_minutes=60)
+                        detail_lines: List[str] = []
+                        effective_news = False
+                        for ev in news_hits:
+                            title = ev.get("title", "")
+                            title_html = html.escape(title)
+                            if ev.get("all_day"):
+                                time_part = "All Day"
+                            else:
+                                time_part = html.escape(ev.get("time") or "-")
+                            line = f"{time_part} {title_html}"
+                            if ev.get("window") == "recent-null":
+                                line += " (null)"
+                            is_holiday = "holiday" in title.lower()
+                            if is_holiday:
+                                line += " (holiday)"
+                            else:
+                                effective_news = True
+                            detail_lines.append(line)
+                        news_cell_html = "Var<br>" + "<br>".join(detail_lines) if detail_lines else "Yok"
+                        if xyz_enabled and not effective_news:
+                            oc_abs = abs(hit.oc)
+                            prev_abs = abs(hit.prev_oc)
+                            if oc_abs > limit_margin or prev_abs > limit_margin:
+                                offset_has_non_news[item.offset] = True
                         rows.append(
                             f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
                             f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"
