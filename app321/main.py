@@ -507,7 +507,7 @@ def _detect_signal_candles(
     skip_values = {1, 3} if seq_key == "S1" else {1, 5}
     threshold = abs(limit)
     tol = abs(tolerance or 0.0)
-    effective_threshold = max(0.0, threshold - tol)
+    effective_threshold = threshold + tol
 
     start_tod = dtime(hour=18, minute=0)
     base_idx, base_status = find_start_index(candles, start_tod)
