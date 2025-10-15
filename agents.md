@@ -10,6 +10,7 @@ Bu rehber, projedeki tüm alt uygulamaları (app321, app48, app72, app80, app120
 - **2025-08 – IOV sinyal motoru:** OC/PrevOC limit eşikleri ve işaret kontrolleriyle “Inverse Offset Value” mumları tanımlandı.
 - **2025-07 – app120 birleşik web arayüzü:** 120m analiz, DC listesi, offset matrisi ve 60→120 converter tek arayüzde birleştirildi.
 - **2025-09 – IOU XYZ filtresi & haber entegrasyonu:** Tüm IOU sekmelerine opsiyonel XYZ filtresi eklendi; tatiller, all-day haberler ve app72’nin 16:48/18:00/19:12/20:24 slotları özel olarak ele alınır.
+- **2025-10 – IOU tolerans parametresi:** IOU taramaları için ± tolerans alanı eklendi; varsayılan 0.005 olup UI’dan değiştirilebilir. Sinyaller ancak `|OC|` ve `|PrevOC|` değerleri `limit + tolerans` eşiğini aştığında listelenir.
 - **2025-06 – app80 & app72 converter’ları:** 20→80 ve 12→72 dakikalık dönüştürücüler web ve CLI olarak eklendi.
 - **2025-05 – app48 sentetik mum desteği:** Piyasa kapanış aralığını korumak için 18:00 ve 18:48 sentetik mumları eklendi.
 - **Daha eski çekirdek:** app321 (60m) sayımı, DC tespiti, offset matrisi ve tahmin desteği.
@@ -96,6 +97,11 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 - Girdi seçenekleri: `UTC-4` veya `UTC-5`.
 - `UTC-5` seçilirse tüm mumlar +60 dakika kaydırılır ve çıktı `UTC-4`’e normalize edilir.
 
+### 3.7 IOU Limit & Tolerans
+- Web formları ve CLI çağrıları (varsayılan olarak 0.005) için `± tolerans` değeri desteklenir.
+- Bir mum IOU sinyaline dahil olabilmek için hem `|OC|` hem de `|PrevOC|` değerleri `limit + tolerans` eşiğini aşmalıdır; sınırın altında kalan veya yalnızca tolerans içinde kalan değerler elenir.
+- Tolerans sıfırlanırsa klasik davranış (yalnızca limit üstü değerler) korunur.
+
 ## 4. Uygulama Detayları (Yeni → Eski)
 
 ### 4.1 app120 – 120 Dakikalık Analiz Platformu
@@ -108,7 +114,7 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
   2. **DC List:** Tüm DC mumlarının ham OHLC çıktısı.
   3. **Matrix:** Tüm offset değerleri için zaman/OC/PrevOC özet tablosu.
   4. **IOV Tarama:** Çoklu CSV desteği; limit eşiklerini aşan ve zıt işaretli OC/PrevOC ikililerini dosya bazlı kartlarda listeler. S1 için `1` ve `3`, S2 için `1` ve `5` sinyal dışıdır. DC kapsaması `(rule)` etiketi ile görünür.
-  5. **IOU Tarama:** IOV ile aynı arayüz; farkı aynı işaretli OC/PrevOC’e odaklanmasıdır.
+  5. **IOU Tarama:** IOV ile aynı arayüz; farkı aynı işaretli OC/PrevOC’e odaklanmasıdır. Formda varsayılan değeri 0.005 olan `± tolerans` alanı bulunur ve `|OC|`, `|PrevOC|` değerlerinin `limit + tolerans` eşiğini aşmadığı satırlar otomatik olarak elenir.
   6. **60→120 Converter:** 60m CSV yüklenir, normalize edilir, 120m çıktısı CSV indirilebilir.
 - **CLI Örnekleri:**
   ```bash
@@ -121,7 +127,7 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 
 ### 4.2 app80 – 80 Dakikalık Analiz
 - **Üç ana modül:** `counter.py`, `main.py` (20→80 converter), `web.py` (port 2180, sekmeler: Analiz, DC List, Matrix, IOU Tarama, 20→80 Converter).
-- **IOU Tarama:** Limit ve dizi seçimiyle aynı işaretli OC/PrevOC ikililerini çoklu CSV desteğiyle dosya bazında listeler.
+- **IOU Tarama:** Limit, ± tolerans (varsayılan 0.005) ve dizi seçimiyle aynı işaretli OC/PrevOC ikililerini çoklu CSV desteğiyle dosya bazında listeler; yalnızca `|OC|` ve `|PrevOC|` değerleri `limit + tolerans` eşiğini geçen satırlar raporlanır.
 - **DC Kısıtları:** (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:00 DC olamaz. Önceki DC yasağı geçerlidir.
 - **Converter:** 4 × 20m mum → 1 × 80m mum. Open=ilk open, Close=son close, High/Low blok içindeki max/min.
 - **CLI Örnekleri:**
@@ -132,7 +138,7 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 
 ### 4.3 app72 – 72 Dakikalık Analiz
 - **Modüller:** `counter.py`, `main.py` (12→72 converter), `web.py` (port 2172; sekmeler: Analiz, DC List, Matrix, IOU Tarama, 12→72 Converter).
-- **IOU Tarama:** Çoklu CSV desteğiyle aynı işaretli OC/PrevOC eşiklerini raporlar; sonuçlar dosya kartlarında gösterilir.
+- **IOU Tarama:** Çoklu CSV desteğiyle aynı işaretli OC/PrevOC eşiklerini raporlar; limit + ± tolerans (varsayılan 0.005) eşiğini aşan satırlar dosya kartlarında gösterilir.
 - **DC Kısıtları (2 haftalık veri varsayımı):** 18:00, Cuma 16:48, (Pazar hariç) 19:12 & 20:24, Cuma 16:00 DC olamaz.
 - **Converter:** 7 adet 12m mum → 1 adet 72m mum (Pazar 18:00 öncesi ve Cumartesi mumları atlanır). Haftasonu boşlukları otomatik geçilir.
 - **CLI Örnekleri:**
@@ -143,7 +149,7 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 
 ### 4.4 app48 – 48 Dakikalık Analiz
 - **Özellikler:** Sentetik mum ekleme (ilk gün hariç, her gün 18:00 ve 18:48). Web portu 2020.
-- **IOU Tarama:** Limit ve dizi seçimleriyle çoklu CSV analiz eder; sonuç tabloları sentetik/gerçek ayrımını `syn/real` etiketiyle gösterir.
+- **IOU Tarama:** Limit, ± tolerans (varsayılan 0.005) ve dizi seçimleriyle çoklu CSV analiz eder; `limit + tolerans` eşiğini geçen satırlar sentetik/gerçek ayrımı `syn/real` etiketiyle gösterilerek raporlanır.
 - **Sentetik Mum Akışı:** 17:12 ve 19:36 gerçek mumları arasına 18:00/18:48 sentetik mumlar eklenir; open/close lineer şekilde setlenir (open = önceki close, close = sonraki open’a doğru interpolasyon, high/low min/max).
 - **DC İstisnası:** 13:12–19:36 arası DC’ler normal kabul edilir.
 - **CLI Örnekleri:**
@@ -154,7 +160,7 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 
 ### 4.5 app321 – 60 Dakikalık Analiz
 - **Port 2019** için web arayüzü; sekmeler: Analiz, DC List, Matrix, IOU Tarama.
-- **IOU Tarama:** Multi-upload desteği; limit eşiğini aşan ve aynı işaretli OC/PrevOC değerlerini offset bazında listeler.
+- **IOU Tarama:** Multi-upload desteği; kullanıcı limit ve ± tolerans (varsayılan 0.005) belirler, `|OC|`, `|PrevOC| ≥ limit + tolerans` koşulunu sağlayan aynı işaretli değerler offset bazında listelenir.
 - **DC İstisnası:** 13:00–20:00 arası DC’ler normal mum sayılır.
 - **Tahmin:** Sequence değerleri veri aralığı dışına taşarsa tahmini timestamp raporlanır.
 - **Matrix Sekmesi:** Tüm offset değerleri tek tabloda saat/OC/PrevOC olarak listelenir.
@@ -195,6 +201,7 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 - **All-day haberler:** Zaman etiketi “All Day – Başlık” formatıyla yazılır. Tatil dışı all-day olayları offset’i korur.
 - **17:xx slot kuralı (app72):** `SPECIAL_SLOT_TIMES = {16:48, 18:00, 19:12, 20:24}`. Haber listesi boş olsa bile bu saatler “Kural slot HH:MM” notuyla haber var kabul edilir ve elenmez. Slotta tatil varsa nötr kalır; yalnızca gerçek olmayan tatiller filtreyi tetiklemez.
 - **Boş haberler:** Haber bulunmazsa hücre `Yok` olur ve offset elenir. Böylece yalnızca haber (veya özel slot) olmayan kombinasyonlar XYZ dışına atılır.
+- **Tolerans entegrasyonu:** XYZ filtresi hesaplanırken de `|OC|`, `|PrevOC| ≥ limit + tolerans` şartı aranır; tolerans dahilinde kalan satırlar otomatik olarak filtre dışına taşınır.
 
 ### 5.6 Ortak Varlıklar
 - `favicon` paketi tüm web arayüzlerinde kullanılan favicon ve manifest dosyalarını sunar (`render_head_links` + `try_load_asset`).
@@ -218,6 +225,7 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 
 - **IOV/IOU Çoklu Yükleme:** 25’e kadar CSV aynı formla seçilebilir; sonuçlarda hangi dosyanın hangi sinyali verdiği açıkça görülür.
 - **Limit Seçimi:** Limit değeri 0 girilmemelidir; sıfır değeri sinyallerin çoğunu eler.
+- **± Tolerans:** Varsayılan tolerans 0.005’tir; IOU formlarındaki alanı kullanarak eşiği genişletebilir/kısıtlayabilirsiniz. Tolerans değeri `limit`e eklenir, bu yüzden toleransı büyütmek raporlanan satırları daraltır.
 - **DC İncelemesi:** Web arayüzlerindeki DC List sekmeleri ile ham DC listelerini görüntüleyebilir ve CSV’ye aktarabilirsiniz.
 - **Timezone Tutarlılığı:** Render’da güncel veri yüklerken girdi timezone’unu mutlaka seçin; aksi halde analiz kayar.
 - **Sentetik Mumlar:** app48 sonuçlarında sentetik mumlar normal count’a dahil, ancak DC listesinde `tag=syn` ile ayrışır.
