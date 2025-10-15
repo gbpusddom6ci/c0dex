@@ -24,10 +24,12 @@ Bu rehber, projedeki tüm alt uygulamaları (app321, app48, app72, app80, app120
 ### 2.2 Dizin Yapısı (Yeni → Eski)
 - `app120/` – 120 dakikalık analiz paketi (counter, converter, web UI).
 - `app80/`, `app72/`, `app48/`, `app321/` – diğer timeframe uygulamaları (CLI + web).
-- `app48_dc/`, `app321_dc/` – yalnızca DC listesi çıkaran yardımcı CLI’lar.
 - `appsuite/` – Tüm uygulamaları tek host altında reverse proxy’leyen birleşik arayüz.
 - `landing/` – Basit tanıtım sayfası, uygulama linklerini listeler.
-- Kök dizindeki `.csv` dosyaları test/örnek veri setleri.
+- `calendar_md/` – ForexFactory tarzı markdown takvimlerini JSON’a dönüştüren CLI + web aracı.
+- `favicon/` – Ortak favicon ve manifest varlıklarını sağlayan yardımcı paket.
+- `economic_calendar/` – Haber entegrasyonu için örnek JSON takvim dosyaları.
+- Kök dizinde varsayılan CSV örnekleri yer almıyor; test için kendi veri setinizi eklemeniz gerekiyor.
 
 ### 2.3 Ortak Modül Kalıbı
 Her timeframe klasöründe tipik olarak şu modüller bulunur:
@@ -149,7 +151,6 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
   python3 -m app48.main --csv data.csv --input-tz UTC-5 --sequence S2 --offset +1 --show-dc
   python3 -m app48.main --csv data.csv --predict 49
   ```
-- **app48_dc CLI:** DC listesini çıkarır, sentetik mumları `tag=syn` etiketiyle gösterir.
 
 ### 4.5 app321 – 60 Dakikalık Analiz
 - **Port 2019** için web arayüzü; sekmeler: Analiz, DC List, Matrix, IOU Tarama.
@@ -162,7 +163,6 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
   python3 -m app321.main --csv data.csv --sequence S1 --offset -3 --show-dc
   python3 -m app321.main --csv data.csv --predict-next
   ```
-- **app321_dc CLI:** 60m akışı için DC listesini hızlıca çıkarır.
 
 ## 5. Web Katmanı ve Birleşik Arayüzler
 
@@ -175,11 +175,19 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 - Her backend ayrı thread’de başlatılır (`start_backend_thread`). HTML linkleri proxy prefix’ine göre rewrite edilir.
 - Health endpoint: `/health` → `ok`.
 
-### 5.3 Dağıtım Dosyaları
+### 5.3 calendar_md
+- `python3 -m calendar_md.web --port 2300` komutu markdown → JSON dönüştürücüyü tarayıcıda açar.
+- Çoklu `.md` yüklemelerini kabul eder; her dosya için ayrı JSON üretip zip arşivi halinde indirir.
+- CLI modu: `python3 -m calendar_md --input takvim.md --output out.json --year 2025`.
+- Üretilen dosyalar `news_loader.py` tarafından IOU XYZ filtresi için tüketilir.
+
+### 5.4 Dağıtım Dosyaları
 - `Procfile` ve `render.yaml` Render.com dağıtımı için örnek konfigürasyon sağlar.
 - `Dockerfile` minimal Python imajıyla tüm web servislerini başlatmaya uygun temel sunar.
+- `railway.toml` Railway/Nixpacks dağıtımı için varsayılan komutları tanımlar.
+- `.python-version` (3.11.0) Render ve lokal geliştirmede tutarlı runtime seçimini garanti eder.
 
-### 5.4 IOU Haber Akışı & XYZ Filtresi (2025-09)
+### 5.5 IOU Haber Akışı & XYZ Filtresi (2025-09)
 - **Checkbox:** app48/app72/app80/app120/app321 IOU formlarında “XYZ kümesi (haber filtreli)” seçeneği bulunur. İşaretlendiğinde haber taşımayan offsetler elenir ve kalanlar kart üst bilgisinde `XYZ Kümesi` satırıyla listelenir.
 - **Haber kaynağı (`news_loader.py`):** JSON takvim dosyalarında `time_24h` yoksa `time`, `time_text`, `time_label`, `session` alanlarını dener. `"All Day"` / `all_day=true` kayıtları gün bazında yakalar, `recent-null` penceresi null actual taşıyan önceki olayları dahil eder.
 - **Hücre formatı:** Haber sütunu `Var`, `Holiday` veya `Yok` ile başlar. Tatil satırları sadece bilgi amaçlıdır; grafiksel olarak listelenir ama offset elenmesini tetiklemez.
@@ -188,12 +196,14 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 - **17:xx slot kuralı (app72):** `SPECIAL_SLOT_TIMES = {16:48, 18:00, 19:12, 20:24}`. Haber listesi boş olsa bile bu saatler “Kural slot HH:MM” notuyla haber var kabul edilir ve elenmez. Slotta tatil varsa nötr kalır; yalnızca gerçek olmayan tatiller filtreyi tetiklemez.
 - **Boş haberler:** Haber bulunmazsa hücre `Yok` olur ve offset elenir. Böylece yalnızca haber (veya özel slot) olmayan kombinasyonlar XYZ dışına atılır.
 
-## 6. Veri Setleri ve Örnek Dosyalar
-- `x.csv`, `x222.csv`, `test.csv`, `test48.csv`, `test_120m.csv`, `test_offset.csv` – Test veya demo akışları.
-- `points.csv` – 120m S1 örnek çıktısı (IOV örneği).
-- `120mdata.csv`, `4312.csv`, `ornekdata120.csv`, `tassak*.csv`, `ex12to48.csv` – Çeşitli deneme verileri.
+### 5.6 Ortak Varlıklar
+- `favicon` paketi tüm web arayüzlerinde kullanılan favicon ve manifest dosyalarını sunar (`render_head_links` + `try_load_asset`).
+- Appsuite reverse proxy’si favicon isteklerini doğrudan bu paket üzerinden cevaplar; harici CDN gerektirmez.
 
-Bu dosyalar git repo’sunda tutuluyor; üretimde kullanılmadan önce uygun klasörlere taşınması önerilir.
+## 6. Veri Setleri ve Örnek Dosyalar
+- Repoda hazır CSV örnekleri bulunmuyor; test etmek için kendi veri setlerinizi eklemelisiniz.
+- IOU/IOV senaryolarını doğrulamak için web arayüzlerinde çoklu dosya yükleme özelliğini kullanabilirsiniz.
+- Haber filtresi `economic_calendar/` klasöründeki JSON dosyalarından beslenir; yeni takvimler `calendar_md` araçlarıyla üretilebilir.
 
 ## 7. Kurulum ve Çalıştırma
 
@@ -208,7 +218,7 @@ Bu dosyalar git repo’sunda tutuluyor; üretimde kullanılmadan önce uygun kla
 
 - **IOV/IOU Çoklu Yükleme:** 25’e kadar CSV aynı formla seçilebilir; sonuçlarda hangi dosyanın hangi sinyali verdiği açıkça görülür.
 - **Limit Seçimi:** Limit değeri 0 girilmemelidir; sıfır değeri sinyallerin çoğunu eler.
-- **DC İncelemesi:** Şüpheli zaman aralıklarında `app48_dc` veya `app321_dc` CLI’larını kullanarak ham DC listesi çıkarabilirsiniz.
+- **DC İncelemesi:** Web arayüzlerindeki DC List sekmeleri ile ham DC listelerini görüntüleyebilir ve CSV’ye aktarabilirsiniz.
 - **Timezone Tutarlılığı:** Render’da güncel veri yüklerken girdi timezone’unu mutlaka seçin; aksi halde analiz kayar.
 - **Sentetik Mumlar:** app48 sonuçlarında sentetik mumlar normal count’a dahil, ancak DC listesinde `tag=syn` ile ayrışır.
 
