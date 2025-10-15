@@ -508,6 +508,7 @@ def _detect_signal_candles(
     candles: List[Candle],
     sequence: str,
     limit: float,
+    tolerance: float,
     condition: Callable[[float, float], bool],
     empty_error: str,
 ) -> SignalReport:
@@ -520,7 +521,8 @@ def _detect_signal_candles(
     seq_values = SEQUENCES[seq_key][:]
     skip_values = {1, 3} if seq_key == "S1" else {1, 5}
     threshold = abs(limit)
-    effective_threshold = max(0.0, threshold - IOU_TOLERANCE)
+    tol = abs(tolerance or 0.0)
+    effective_threshold = max(0.0, threshold - tol)
 
     base_idx, base_status = find_start_index(candles, DEFAULT_START_TOD)
     base_ts = candles[base_idx].ts if 0 <= base_idx < len(candles) else None
@@ -581,11 +583,13 @@ def detect_iou_candles(
     candles: List[Candle],
     sequence: str,
     limit: float,
+    tolerance: float = IOU_TOLERANCE,
 ) -> SignalReport:
     return _detect_signal_candles(
         candles,
         sequence,
         limit,
+        tolerance,
         condition=lambda oc, prev: oc * prev > 0,
         empty_error="IOU analizi için mum verisi gerekli",
     )

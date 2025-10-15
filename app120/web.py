@@ -331,6 +331,10 @@ def render_iou_index() -> bytes:
             <label>Limit (|OC|, |PrevOC|)</label>
             <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
           </div>
+          <div>
+            <label>± Tolerans</label>
+            <input type='number' step='0.0001' min='0' value='0.005' name='tolerance' />
+          </div>
         </div>
         <div class='row' style='margin-top:12px; gap:32px;'>
           <label style='display:flex; align-items:center; gap:8px;'>
@@ -529,15 +533,27 @@ class App120Handler(BaseHTTPRequestHandler):
                 except Exception:
                     limit_val = 0.0
                 limit_val = abs(limit_val)
-                limit_margin = limit_val + IOU_TOLERANCE
                 detector = detect_iov_candles if self.path == "/iov" else detect_iou_candles
                 metric_label = "IOV" if self.path == "/iov" else "IOU"
                 xyz_enabled = metric_label == "IOU" and "xyz_mode" in form
+                tolerance_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
+                if metric_label == "IOU":
+                    try:
+                        tolerance_val = float(tolerance_raw)
+                    except Exception:
+                        tolerance_val = IOU_TOLERANCE
+                    tolerance_val = abs(tolerance_val)
+                else:
+                    tolerance_val = 0.0
+                limit_margin = limit_val + tolerance_val
 
                 sections: List[str] = []
                 for entry in files:
                     candles = load_counter_candles(entry)
-                    report = detector(candles, sequence, limit_val)
+                    if metric_label == "IOU":
+                        report = detector(candles, sequence, limit_val, tolerance=tolerance_val)
+                    else:
+                        report = detector(candles, sequence, limit_val)
 
                     offset_statuses = []
                     offset_counts = []
@@ -610,6 +626,7 @@ class App120Handler(BaseHTTPRequestHandler):
                         xyz_offsets = [o for o in base_offsets if not offset_has_non_news.get(o, False)]
                         xyz_text = ", ".join((f"+{o}" if o > 0 else str(o)) for o in xyz_offsets) if xyz_offsets else "-"
                         xyz_line = f"<div><strong>XYZ Kümesi:</strong> {html.escape(xyz_text)}</div>"
+                    tolerance_line = f"<div><strong>Tolerans:</strong> {tolerance_val:.5f}</div>" if metric_label == "IOU" else ""
 
                     info = (
                         f"<div class='card'>"
@@ -620,6 +637,7 @@ class App120Handler(BaseHTTPRequestHandler):
                         f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
                         f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
                         f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
+                        f"{tolerance_line}"
                         f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
                         f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
                         f"<div><strong>Offset {metric_label} sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"

@@ -283,6 +283,10 @@ def render_iou_index() -> bytes:
             <label>Limit (|OC|, |PrevOC|)</label>
             <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
           </div>
+          <div>
+            <label>± Tolerans</label>
+            <input type='number' step='0.0001' min='0' value='0.005' name='tolerance' />
+          </div>
         </div>
         <div class='row' style='margin-top:12px; gap:32px;'>
           <label style='display:flex; align-items:center; gap:8px;'>
@@ -595,12 +599,18 @@ class AppHandler(BaseHTTPRequestHandler):
             tz_value = (form.get("input_tz", {}).get("value") or "UTC-5").strip()
             sequence = (form.get("sequence", {}).get("value") or "S2").strip()
             limit_raw = (form.get("limit", {}).get("value") or "0").strip()
+            tol_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
             try:
                 limit_val = float(limit_raw)
             except Exception:
                 limit_val = 0.0
             limit_val = abs(limit_val)
-            limit_margin = limit_val + IOU_TOLERANCE
+            try:
+                tolerance_val = float(tol_raw)
+            except Exception:
+                tolerance_val = IOU_TOLERANCE
+            tolerance_val = abs(tolerance_val)
+            limit_margin = limit_val + tolerance_val
             xyz_enabled = "xyz_mode" in form
 
             tz_norm = tz_value.upper().replace(" ", "")
@@ -622,7 +632,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 else:
                     candles_use = candles_raw
 
-                report = detect_iou_candles(candles_use, sequence, limit_val)
+                report = detect_iou_candles(candles_use, sequence, limit_val, tolerance=tolerance_val)
                 offset_statuses: List[str] = []
                 offset_counts: List[str] = []
                 total_hits = 0
@@ -694,6 +704,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
                     f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
                     f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
+                    f"<div><strong>Tolerans:</strong> {tolerance_val:.5f}</div>"
                     f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
                     f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
                     f"<div><strong>Offset IOU sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
