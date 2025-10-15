@@ -102,6 +102,21 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 - Bir mum IOU sinyaline dahil olabilmek için hem `|OC|` hem de `|PrevOC|` değerleri `limit + tolerans` eşiğini aşmalıdır; sınırın altında kalan veya yalnızca tolerans içinde kalan değerler elenir.
 - Tolerans sıfırlanırsa klasik davranış (yalnızca limit üstü değerler) korunur.
 
+### 3.8 IOU Algoritması
+IOU algılama akışı tüm timeframe uygulamalarında aynıdır:
+
+1. **Giriş hazırlığı:** CSV’den yüklenen mumlar timestamp’e göre sıralanır, gerekirse `UTC-5 → UTC-4` kaydırması uygulanır. Her timeframe spesifik DC istisnaları `compute_dc_flags` ile işaretlenir.
+2. **Baz hizalama:** İlk 18:00 mumu `find_start_index` ile bulunur; pozitif offsetler DC olmayan mumlara kaydırılır, offset hizalamaları `compute_offset_alignment` çıktılarıyla tutulur.
+3. **Dizi tahsisi:** Seçilen sequence (`S1` veya `S2`) boyunca her hücre için mum index’i belirlenir; DC’ye denk gelirse kapsayıcı kural devreye girer.
+4. **Sinyal filtresi:** Her offset için:
+   - `oc = close - open`
+   - `prev_oc = prev.close - prev.open`
+   - Eğer `abs(oc) ≥ limit + tolerans` **ve** `abs(prev_oc) ≥ limit + tolerans` ve işaretler aynı ise hit kaydedilir.
+   - Limit veya tolerans koşulu sağlanmazsa satır tamamen elenir; yalnızca limit dışı olanlar değil, tolerans bandında kalanlar da dahil edilmez.
+5. **Sonuç üretimi:** Hit’ler offset bazında gruplanır; DC kapsaması `(rule)` etiketiyle, sentetik/gerçek ayrımı `syn/real` etiketiyle, haberler ise `find_news_for_timestamp` çıktısıyla zenginleştirilir.
+
+Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark yalnızca çıktı formatıdır (CLI → CSV/terminal, web → HTML tablo).
+
 ## 4. Uygulama Detayları (Yeni → Eski)
 
 ### 4.1 app120 – 120 Dakikalık Analiz Platformu
@@ -202,6 +217,26 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 - **17:xx slot kuralı (app72):** `SPECIAL_SLOT_TIMES = {16:48, 18:00, 19:12, 20:24}`. Haber listesi boş olsa bile bu saatler “Kural slot HH:MM” notuyla haber var kabul edilir ve elenmez. Slotta tatil varsa nötr kalır; yalnızca gerçek olmayan tatiller filtreyi tetiklemez.
 - **Boş haberler:** Haber bulunmazsa hücre `Yok` olur ve offset elenir. Böylece yalnızca haber (veya özel slot) olmayan kombinasyonlar XYZ dışına atılır.
 - **Tolerans entegrasyonu:** XYZ filtresi hesaplanırken de `|OC|`, `|PrevOC| ≥ limit + tolerans` şartı aranır; tolerans dahilinde kalan satırlar otomatik olarak filtre dışına taşınır.
+- **Takvim JSON şeması:** Her kayıt aşağıdaki alanları kullanır; eksik alanlar sırayla diğer alternatiflerden doldurulur:
+  ```json
+  {
+    "date": "2025-02-13",
+    "time": "14:30",
+    "time_24h": "14:30",
+    "session": "New York",
+    "title": "CPI (YoY)",
+    "currency": "USD",
+    "impact": "High",
+    "all_day": false,
+    "recent_null": false,
+    "actual": "0.4%",
+    "previous": "0.5%",
+    "forecast": "0.4%"
+  }
+  ```
+  - `all_day=true` ise `time` alanı `null` olabilir.
+  - `recent_null=true` olduğunda kaydın "null actual taşıyan önceki olay" penceresinden geldiği anlaşılır; UI’de `(null)` etiketiyle gösterilir.
+  - `title` içinde “holiday” geçiyorsa satır `effective_news=False` kabul edilir ve XYZ filtresinde haber yok sayılır.
 
 ### 5.6 Ortak Varlıklar
 - `favicon` paketi tüm web arayüzlerinde kullanılan favicon ve manifest dosyalarını sunar (`render_head_links` + `try_load_asset`).
