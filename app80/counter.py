@@ -156,7 +156,7 @@ def compute_dc_flags(candles: List[Candle]) -> List[Optional[bool]]:
                 cond = False
         else:
             is_week_close = False
-            if cur.ts.hour == 16 and cur.ts.minute == 0:
+            if cur.ts.hour == 16 and cur.ts.minute == 40:
                 if i + 1 >= len(candles):
                     is_week_close = True
                 else:
@@ -613,22 +613,22 @@ def fmt_ts(dt: Optional[datetime]) -> str:
 def predict_next_candle_time(current_ts: datetime, minutes_per_step: int = MINUTES_PER_STEP) -> datetime:
     """
     Haftasonu boşluğunu dikkate alarak bir sonraki mum zamanını hesaplar.
-    Piyasa: Cuma 16:00'da kapanır, Pazar 18:00'da açılır.
+    Piyasa: Cuma 16:40'ta kapanır, Pazar 18:00'da açılır.
     """
     next_ts = current_ts + timedelta(minutes=minutes_per_step)
     
-    # Cuma 16:00 sonrası kontrolü - hafta kapanışı
+    # Cuma 16:40 sonrası kontrolü - hafta kapanışı
     weekday = current_ts.weekday()  # 0=Pazartesi, 4=Cuma, 5=Cumartesi, 6=Pazar
     
-    # Eğer mevcut mum Cuma 16:00 ise, sonraki mum Pazar 18:00 olmalı
-    if weekday == 4 and current_ts.hour == 16 and current_ts.minute == 0:
-        # Cuma 16:00'dan sonra Pazar 18:00'a geç
+    # Eğer mevcut mum Cuma 16:40 ise, sonraki mum Pazar 18:00 olmalı
+    if weekday == 4 and current_ts.hour == 16 and current_ts.minute == 40:
+        # Cuma 16:40'tan sonra Pazar 18:00'a geç
         days_to_sunday = 2  # Cuma'dan Pazar'a
         next_ts = datetime.combine(current_ts.date() + timedelta(days=days_to_sunday), dtime(hour=18, minute=0))
         return next_ts
     
-    # Sonraki zaman Cuma 16:00'ı geçecekse, kontrol et
-    if next_ts.weekday() == 4 and next_ts.hour >= 16:
+    # Sonraki zaman Cuma 16:40'ı geçecekse, kontrol et
+    if next_ts.weekday() == 4 and (next_ts.hour > 16 or (next_ts.hour == 16 and next_ts.minute >= 40)):
         # Pazar 18:00'a atla
         days_to_sunday = (6 - next_ts.weekday()) % 7
         if days_to_sunday == 0:
