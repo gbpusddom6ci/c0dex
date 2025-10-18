@@ -226,7 +226,7 @@ def run(
         Backend(name="app80", title="app80", host=backend_host, port=app80_port, prefix="/app80", description="80 dakikalık sayım ve 20→80 dönüştürücü (4x20m)"),
         Backend(name="app120", title="app120", host=backend_host, port=app120_port, prefix="/app120", description="120 dakikalık analiz ve dönüştürücü"),
         Backend(name="app321", title="app321", host=backend_host, port=app321_port, prefix="/app321", description="60 dakikalık sayım araçları"),
-        Backend(name="calendar", title="Takvim Dönüştürücü", host=backend_host, port=calendar_port, prefix="/calendar", description="Takvim markdown → JSON dönüştürücü"),
+        Backend(name="calendar_md", title="Takvim Dönüştürücü", host=backend_host, port=calendar_port, prefix="/calendar", description="Takvim markdown → JSON dönüştürücü"),
     ]
 
     start_backend_thread("app48", run_app48, backend_host, app48_port)
