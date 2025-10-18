@@ -109,8 +109,8 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 120px;
-        max-width: 30%;
+        width: 165px;
+        max-width: 40%;
         transform: translate(-50%, -50%);
         box-shadow: 0 0 25px rgba(255, 255, 255, 0.25);
       }}
@@ -124,12 +124,12 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
         width: 100%;
         height: auto;
       }}
-      .planet--app48 {{ top: 12%; left: 50%; }}
-      .planet--app72 {{ top: 28%; left: 82%; }}
-      .planet--app80 {{ top: 62%; left: 88%; }}
-      .planet--app120 {{ top: 86%; left: 52%; }}
-      .planet--app321 {{ top: 66%; left: 18%; }}
-      .planet--calendar {{ top: 26%; left: 18%; }}
+      .planet--app48 {{ top: 6%; left: 50%; }}
+      .planet--app72 {{ top: 24%; left: 90%; }}
+      .planet--app80 {{ top: 70%; left: 92%; }}
+      .planet--app120 {{ top: 92%; left: 52%; }}
+      .planet--app321 {{ top: 70%; left: 10%; }}
+      .planet--calendar {{ top: 24%; left: 12%; }}
       @media (max-width: 640px) {{
         body {{ padding: 40px 0; }}
         .portal {{
@@ -137,17 +137,17 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
           height: 480px;
         }}
         .portal .logo {{
-          width: 110px;
+          width: 150px;
         }}
         .planet {{
           width: 90px;
         }}
         .planet--app48 {{ top: 8%; left: 50%; }}
-        .planet--app72 {{ top: 26%; left: 82%; }}
-        .planet--app80 {{ top: 62%; left: 88%; }}
-        .planet--app120 {{ top: 90%; left: 52%; }}
-        .planet--app321 {{ top: 68%; left: 20%; }}
-        .planet--calendar {{ top: 24%; left: 18%; }}
+        .planet--app72 {{ top: 28%; left: 90%; }}
+        .planet--app80 {{ top: 72%; left: 92%; }}
+        .planet--app120 {{ top: 94%; left: 52%; }}
+        .planet--app321 {{ top: 72%; left: 10%; }}
+        .planet--calendar {{ top: 28%; left: 12%; }}
       }}
     </style>
   </head>
