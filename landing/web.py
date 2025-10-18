@@ -109,8 +109,8 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
         position: absolute;
         top: 50%;
         left: 50%;
-        width: 200px;
-        max-width: 42%;
+        width: 120px;
+        max-width: 30%;
         transform: translate(-50%, -50%);
         box-shadow: 0 0 25px rgba(255, 255, 255, 0.25);
       }}
@@ -137,7 +137,7 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
           height: 480px;
         }}
         .portal .logo {{
-          width: 150px;
+          width: 110px;
         }}
         .planet {{
           width: 90px;
