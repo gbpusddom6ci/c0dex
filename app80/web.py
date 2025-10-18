@@ -30,7 +30,7 @@ from .main import (
 )
 from email.parser import BytesParser
 from email.policy import default as email_default
-from datetime import timedelta
+from datetime import timedelta, time as dtime
 
 from news_loader import find_news_for_timestamp
 
@@ -538,11 +538,14 @@ class App80Handler(BaseHTTPRequestHandler):
                                 oc_abs = abs(hit.oc)
                                 prev_abs = abs(hit.prev_oc)
                                 if oc_abs > limit_margin or prev_abs > limit_margin:
-                                    offset_has_non_news[item.offset] = True
-                                    elim_label = f"{hit.ts.strftime('%Y-%m-%d %H:%M:%S')} (seq {hit.seq_value})"
-                                    bucket = offset_eliminations.setdefault(item.offset, [])
-                                    if elim_label not in bucket:
-                                        bucket.append(elim_label)
+                                    if hit.ts.time() == dtime(hour=18, minute=0):
+                                        pass
+                                    else:
+                                        offset_has_non_news[item.offset] = True
+                                        elim_label = f"{hit.ts.strftime('%Y-%m-%d %H:%M:%S')} (seq {hit.seq_value})"
+                                        bucket = offset_eliminations.setdefault(item.offset, [])
+                                        if elim_label not in bucket:
+                                            bucket.append(elim_label)
                             rows.append(
                                 f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
                                 f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"
