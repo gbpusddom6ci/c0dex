@@ -4,7 +4,7 @@ import argparse
 import html
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional, Tuple
 
 from favicon import render_head_links, try_load_asset
 
@@ -22,7 +22,7 @@ _LOCAL_ASSET_META = {
     "/assets/suicide.png": (_PHOTO_DIR / "suicide.png", "image/png"),
 }
 
-_LOCAL_ASSETS = {}
+_LOCAL_ASSETS: Dict[str, Tuple[bytes, str]] = {}
 for route, (fs_path, content_type) in _LOCAL_ASSET_META.items():
     if not fs_path.is_file():  # pragma: no cover - defensive guard
         raise FileNotFoundError(f"Yerel asset bulunamadı: {fs_path}")
@@ -53,6 +53,10 @@ def _normalize_path(path: str) -> str:
     if not root.startswith("/"):
         root = "/" + root
     return root
+
+
+def try_load_local_asset(path: str) -> Optional[Tuple[bytes, str]]:
+    return _LOCAL_ASSETS.get(_normalize_path(path))
 
 
 def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
@@ -163,7 +167,7 @@ def make_handler(html_bytes: bytes):
     class LandingHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
             normalized = _normalize_path(self.path)
-            local_asset = _LOCAL_ASSETS.get(normalized)
+            local_asset = try_load_local_asset(normalized)
             if local_asset:
                 payload, content_type = local_asset
                 self.send_response(200)

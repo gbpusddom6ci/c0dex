@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Iterable, List, Tuple
 from urllib.parse import urlsplit
 
-from landing.web import build_html
+from landing.web import build_html, try_load_local_asset
 from app48.web import run as run_app48
 from app72.web import run as run_app72
 from app80.web import run as run_app80
@@ -120,6 +120,16 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
             self.wfile.write(payload)
 
         def do_GET(self) -> None:  # noqa: N802
+            local_asset = try_load_local_asset(self.path)
+            if local_asset:
+                payload, content_type = local_asset
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+
             asset = try_load_asset(self.path)
             if asset:
                 payload, content_type = asset
