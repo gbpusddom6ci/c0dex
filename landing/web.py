@@ -158,7 +158,7 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
         {''.join(planets)}
       </div>
       <div class='footer'>
-        <br><br>
+        <br><br><br>
         <font size='-1' color='#ff0000' face='Times New Roman, serif'>marketmalware</font>
       </div>
     </center>
