@@ -1,27 +1,75 @@
 from __future__ import annotations
 
-from http.server import HTTPServer, BaseHTTPRequestHandler
 import argparse
 import html
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from typing import Dict
 
 from favicon import render_head_links, try_load_asset
 
+_BASE_DIR = Path(__file__).resolve().parent
+_PHOTO_DIR = _BASE_DIR.parent / "photos"
+
+_LOCAL_ASSET_META = {
+    "/assets/bg_stars.gif": (_BASE_DIR / "bg_stars.gif", "image/gif"),
+    "/assets/lobotomy.jpg": (_PHOTO_DIR / "lobotomy.jpg", "image/jpeg"),
+    "/assets/kan.jpeg": (_PHOTO_DIR / "kan.jpeg", "image/jpeg"),
+    "/assets/kits.jpg": (_PHOTO_DIR / "kits.jpg", "image/jpeg"),
+    "/assets/penguins.jpg": (_PHOTO_DIR / "penguins.jpg", "image/jpeg"),
+    "/assets/romantizma.png": (_PHOTO_DIR / "romantizma.png", "image/png"),
+    "/assets/silkroad.jpg": (_PHOTO_DIR / "silkroad.jpg", "image/jpeg"),
+    "/assets/suicide.png": (_PHOTO_DIR / "suicide.png", "image/png"),
+}
+
+_LOCAL_ASSETS = {}
+for route, (fs_path, content_type) in _LOCAL_ASSET_META.items():
+    if not fs_path.is_file():  # pragma: no cover - defensive guard
+        raise FileNotFoundError(f"Yerel asset bulunamadı: {fs_path}")
+    _LOCAL_ASSETS[route] = (fs_path.read_bytes(), content_type)
+
+_IMAGE_SOURCES = {
+    "logo": "/assets/lobotomy.jpg",
+    "app48": "/assets/kan.jpeg",
+    "app72": "/assets/kits.jpg",
+    "app80": "/assets/penguins.jpg",
+    "app120": "/assets/romantizma.png",
+    "app321": "/assets/silkroad.jpg",
+    "calendar_md": "/assets/suicide.png",
+}
+
+_PLANET_LAYOUT = [
+    ("app48", "planet planet--app48"),
+    ("app72", "planet planet--app72"),
+    ("app80", "planet planet--app80"),
+    ("app120", "planet planet--app120"),
+    ("app321", "planet planet--app321"),
+    ("calendar_md", "planet planet--calendar"),
+]
+
+
+def _normalize_path(path: str) -> str:
+    root = path.split("?", 1)[0]
+    if not root.startswith("/"):
+        root = "/" + root
+    return root
+
 
 def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
-    cards = []
-    for key, meta in app_links.items():
-        title = meta.get("title", key)
+    planets = []
+    for key, classes in _PLANET_LAYOUT:
+        meta = app_links.get(key)
+        if not meta:
+            continue
+        src = _IMAGE_SOURCES.get(key)
+        if not src:
+            continue
         url = meta.get("url", "#")
-        description = meta.get("description", "")
-        cards.append(
-            f"""
-            <article class='card'>
-              <h2>{html.escape(title)}</h2>
-              <p>{html.escape(description)}</p>
-              <a class='button' href='{html.escape(url)}' target='_blank' rel='noopener'>Uygulamayı Aç</a>
-            </article>
-            """
+        title = meta.get("title", key)
+        planets.append(
+            f"<a class='{classes}' href='{html.escape(url)}' target='_blank' rel='noopener noreferrer'>"
+            f"<img src='{src}' alt='{html.escape(title)}'>"
+            "</a>"
         )
 
     head_links = render_head_links("    ")
@@ -29,106 +77,83 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
 <html lang='tr'>
   <head>
     <meta charset='utf-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1'>
     {head_links}
-    <title>Trading Araçları | Landing Page</title>
+    <title>Lobotomy Launchpad</title>
     <style>
-      :root {{
-        color-scheme: light dark;
-        --bg: #f5f5f5;
-        --fg: #1f1f1f;
-        --card-bg: #ffffff;
-        --border: #d9d9d9;
-        --accent: #0f62fe;
-      }}
-      @media (prefers-color-scheme: dark) {{
-        :root {{
-          --bg: #121212;
-          --fg: #f3f3f3;
-          --card-bg: #1f1f1f;
-          --border: #333333;
-        }}
-      }}
-      * {{ box-sizing: border-box; }}
-      body {{
+      html, body {{
         margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background: var(--bg);
-        color: var(--fg);
-        min-height: 100vh;
+        padding: 0;
+        min-height: 100%;
+        font-family: "Comic Sans MS", "Arial", sans-serif;
+        color: #ff0000;
+      }}
+      body {{
         display: flex;
-        flex-direction: column;
+        justify-content: center;
         align-items: center;
-        padding: 32px 16px;
       }}
-      header {{
-        max-width: 1200px;
+      .portal {{
+        position: relative;
+        width: 540px;
+        height: 540px;
+        margin: 60px auto;
+      }}
+      .portal img {{
+        border: 0;
+      }}
+      .portal .logo {{
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 300px;
+        max-width: 60%;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 25px rgba(255, 255, 255, 0.25);
+      }}
+      .planet {{
+        position: absolute;
+        width: 130px;
+        transform: translate(-50%, -50%);
+      }}
+      .planet img {{
+        display: block;
         width: 100%;
-        text-align: center;
-        margin-bottom: 24px;
+        height: auto;
       }}
-      header h1 {{ margin: 0 0 12px; font-size: 1.9rem; }}
-      header p {{ margin: 0; line-height: 1.6; }}
-      main {{
-        display: grid;
-        gap: 16px;
-        width: 100%;
-        max-width: 1200px;
-      }}
-      @media (min-width: 640px) {{
-        main {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-      }}
-      @media (min-width: 1024px) {{
-        main {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
-      }}
-      @media (min-width: 1280px) {{
-        main {{ grid-template-columns: repeat(5, minmax(0, 1fr)); }}
-      }}
-      .card {{
-        background: var(--card-bg);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 20px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        gap: 12px;
-        box-shadow: 0 4px 14px rgba(15, 17, 26, 0.08);
-      }}
-      .card h2 {{ margin: 0; font-size: 1.3rem; }}
-      .card p {{ margin: 0; flex-grow: 1; line-height: 1.5; font-size: 0.95rem; }}
-      .button {{
-        align-self: flex-start;
-        background: var(--accent);
-        color: white;
-        padding: 10px 16px;
-        border-radius: 8px;
-        text-decoration: none;
-        font-weight: 600;
-        transition: filter 150ms ease-in-out, transform 150ms ease-in-out;
-      }}
-      .button:hover {{
-        filter: brightness(1.05);
-        transform: translateY(-1px);
-      }}
-      footer {{
-        margin-top: 32px;
-        font-size: 0.85rem;
-        opacity: 0.7;
+      .planet--app48 {{ top: 12%; left: 50%; }}
+      .planet--app72 {{ top: 28%; left: 82%; }}
+      .planet--app80 {{ top: 62%; left: 88%; }}
+      .planet--app120 {{ top: 86%; left: 52%; }}
+      .planet--app321 {{ top: 66%; left: 18%; }}
+      .planet--calendar {{ top: 26%; left: 18%; }}
+      @media (max-width: 640px) {{
+        body {{ padding: 40px 0; }}
+        .portal {{
+          width: 320px;
+          height: 480px;
+        }}
+        .portal .logo {{
+          width: 220px;
+        }}
+        .planet {{
+          width: 90px;
+        }}
+        .planet--app48 {{ top: 8%; left: 50%; }}
+        .planet--app72 {{ top: 26%; left: 82%; }}
+        .planet--app80 {{ top: 62%; left: 88%; }}
+        .planet--app120 {{ top: 90%; left: 52%; }}
+        .planet--app321 {{ top: 68%; left: 20%; }}
+        .planet--calendar {{ top: 24%; left: 18%; }}
       }}
     </style>
   </head>
-  <body>
-    <header>
-      <h1>Trading Araçları</h1>
-      <p>app48, app72, app80, app120 ve app321 arayüzlerine tek yerden erişin. Her kart ilgili modülü yeni sekmede açar.</p>
-    </header>
-    <main>
-      {''.join(cards)}
-    </main>
-    <footer>
-      Uygulamaları açmadan önce ilgili web servislerini çalıştırmayı unutmayın.
-    </footer>
+  <body bgcolor='#000000' background='/assets/bg_stars.gif' text='#ff0000' link='#ff4c4c' vlink='#ff4c4c' alink='#ff4c4c'>
+    <center>
+      <div class='portal'>
+        <img class='logo' src='{_IMAGE_SOURCES["logo"]}' alt='Lobotomy Launchpad'>
+        {''.join(planets)}
+      </div>
+    </center>
   </body>
 </html>"""
     return page.encode("utf-8")
@@ -137,6 +162,17 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
 def make_handler(html_bytes: bytes):
     class LandingHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
+            normalized = _normalize_path(self.path)
+            local_asset = _LOCAL_ASSETS.get(normalized)
+            if local_asset:
+                payload, content_type = local_asset
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+
             asset = try_load_asset(self.path)
             if asset:
                 payload, content_type = asset
@@ -146,16 +182,20 @@ def make_handler(html_bytes: bytes):
                 self.end_headers()
                 self.wfile.write(payload)
                 return
-            if self.path in {"/", "/index", "/index.html"}:
+
+            if normalized in {"/", "/index", "/index.html"}:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(html_bytes)))
                 self.end_headers()
                 self.wfile.write(html_bytes)
-            elif self.path == "/health":
+            elif normalized == "/health":
+                payload = b"ok"
                 self.send_response(200)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
-                self.wfile.write(b"ok")
+                self.wfile.write(payload)
             else:
                 self.send_error(404, "Not Found")
 
@@ -210,36 +250,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     app_links = {
-        "app48": {
-            "title": "app48",
-            "url": args.app48_url,
-            "description": "48 dakikalık mumlarla sayım, DC listesi ve 12→48 dönüştürücü.",
-        },
-        "app72": {
-            "title": "app72",
-            "url": args.app72_url,
-            "description": "72 dakikalık sayım, DC analizi ve 12→72 dönüştürücü (7x12m).",
-        },
-        "app80": {
-            "title": "app80",
-            "url": args.app80_url,
-            "description": "80 dakikalık sayım, DC analizi ve 20→80 dönüştürücü (4x20m).",
-        },
-        "app120": {
-            "title": "app120",
-            "url": args.app120_url,
-            "description": "120 dakikalık sayım, DC analizi ve 60→120 dönüştürücü.",
-        },
-        "app321": {
-            "title": "app321",
-            "url": args.app321_url,
-            "description": "60 dakikalık sayım araçları, DC listesi ve offset matrisi.",
-        },
-        "calendar_md": {
-            "title": "Takvim Dönüştürücü",
-            "url": args.calendar_url,
-            "description": "ForexFactory markdown verisini JSON dosyasına çevir.",
-        },
+        "app48": {"title": "app48", "url": args.app48_url},
+        "app72": {"title": "app72", "url": args.app72_url},
+        "app80": {"title": "app80", "url": args.app80_url},
+        "app120": {"title": "app120", "url": args.app120_url},
+        "app321": {"title": "app321", "url": args.app321_url},
+        "calendar_md": {"title": "Takvim Dönüştürücü", "url": args.calendar_url},
     }
 
     run(args.host, args.port, app_links)
