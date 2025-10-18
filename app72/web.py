@@ -318,6 +318,10 @@ def render_iou_index() -> bytes:
             <input type='checkbox' name='xyz_mode' />
             <span>XYZ kümesi (haber filtreli)</span>
           </label>
+          <label style='display:flex; align-items:center; gap:8px;'>
+            <input type='checkbox' name='xyz_summary' />
+            <span>Özet tablo (yalnız XYZ kümesi)</span>
+          </label>
         </div>
         <div style='margin-top:12px;'>
           <button type='submit'>IOU Tara</button>
@@ -498,6 +502,7 @@ class App72Handler(BaseHTTPRequestHandler):
                 limit_raw = (form.get("limit", {}).get("value") or "0").strip()
                 tol_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
                 xyz_enabled = "xyz_mode" in form
+                summary_mode = "xyz_summary" in form
                 try:
                     limit_val = float(limit_raw)
                 except Exception:
@@ -511,6 +516,7 @@ class App72Handler(BaseHTTPRequestHandler):
                 limit_margin = limit_val + tolerance_val
 
                 sections: List[str] = []
+                summary_entries: List[Dict[str, Any]] = []
                 for entry in files_list:
                     entry_data = entry.get("data")
                     if isinstance(entry_data, (bytes, bytearray)):
@@ -537,6 +543,7 @@ class App72Handler(BaseHTTPRequestHandler):
                     total_hits = 0
                     rows: List[str] = []
                     offset_has_non_news: Dict[int, bool] = {}
+                    offset_eliminations: Dict[int, List[str]] = {}
                     for item in report.offsets:
                         off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
                         status = item.offset_status or "-"
@@ -589,6 +596,10 @@ class App72Handler(BaseHTTPRequestHandler):
                                 prev_abs = abs(hit.prev_oc)
                                 if oc_abs > limit_margin or prev_abs > limit_margin:
                                     offset_has_non_news[item.offset] = True
+                                    elim_label = f"{hit.ts.strftime('%Y-%m-%d %H:%M:%S')} (seq {hit.seq_value})"
+                                    bucket = offset_eliminations.setdefault(item.offset, [])
+                                    if elim_label not in bucket:
+                                        bucket.append(elim_label)
                             rows.append(
                                 f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
                                 f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"
@@ -596,38 +607,67 @@ class App72Handler(BaseHTTPRequestHandler):
                                 f"<td>{news_cell_html}</td></tr>"
                             )
 
-                    xyz_line = ""
-                    if xyz_enabled:
-                        base_offsets = [-3, -2, -1, 0, 1, 2, 3]
-                        xyz_offsets = [o for o in base_offsets if not offset_has_non_news.get(o, False)]
-                        xyz_text = ", ".join((f"+{o}" if o > 0 else str(o)) for o in xyz_offsets) if xyz_offsets else "-"
-                        xyz_line = f"<div><strong>XYZ Kümesi:</strong> {html.escape(xyz_text)}</div>"
+                    base_offsets = [-3, -2, -1, 0, 1, 2, 3]
+                    xyz_offsets = [o for o in base_offsets if not offset_has_non_news.get(o, False)] if xyz_enabled else base_offsets
+                    xyz_text = ", ".join((f"+{o}" if o > 0 else str(o)) for o in xyz_offsets) if xyz_offsets else "-"
 
-                    info = (
-                        f"<div class='card'>"
-                        f"<h3>{html.escape(name)}</h3>"
-                        f"<div><strong>Data:</strong> {len(candles_entry)} candles</div>"
-                        f"<div><strong>Range:</strong> {html.escape(candles_entry[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles_entry[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
-                        f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
-                        f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
-                        f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
-                        f"<div><strong>Tolerans:</strong> {tolerance_val:.5f}</div>"
-                        f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
-                        f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
-                        f"<div><strong>Offset IOU sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
-                        f"<div><strong>Toplam IOU:</strong> {total_hits}</div>"
-                        f"{xyz_line}"
-                        f"</div>"
-                    )
-
-                    if rows:
-                        table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th><th>Haber</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+                    if summary_mode:
+                        elimination_rows = []
+                        for offset in sorted(offset_eliminations.keys()):
+                            offset_label = f"+{offset}" if offset > 0 else str(offset)
+                            ts_joined = ", ".join(offset_eliminations[offset])
+                            elimination_rows.append(f"{offset_label}: {ts_joined}")
+                        elimination_cell = "<br>".join(html.escape(row) for row in elimination_rows) if elimination_rows else "-"
+                        summary_entries.append({
+                            "name": name,
+                            "xyz_text": xyz_text,
+                            "elimination_html": elimination_cell,
+                        })
                     else:
-                        table = "<p>IOU mum bulunamadı.</p>"
+                        xyz_line = ""
+                        if xyz_enabled:
+                            xyz_line = f"<div><strong>XYZ Kümesi:</strong> {html.escape(xyz_text)}</div>"
 
-                    sections.append(info + table)
+                        info = (
+                            f"<div class='card'>"
+                            f"<h3>{html.escape(name)}</h3>"
+                            f"<div><strong>Data:</strong> {len(candles_entry)} candles</div>"
+                            f"<div><strong>Range:</strong> {html.escape(candles_entry[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles_entry[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
+                            f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
+                            f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
+                            f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
+                            f"<div><strong>Tolerans:</strong> {tolerance_val:.5f}</div>"
+                            f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
+                            f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
+                            f"<div><strong>Offset IOU sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
+                            f"<div><strong>Toplam IOU:</strong> {total_hits}</div>"
+                            f"{xyz_line}"
+                            f"</div>"
+                        )
 
-                body = "\n".join(sections)
+                        if rows:
+                            table = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th><th>Haber</th></tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+                        else:
+                            table = "<p>IOU mum bulunamadı.</p>"
+
+                        sections.append(info + table)
+
+                if summary_mode:
+                    header = "<tr><th>Dosya</th><th>XYZ Kümesi</th><th>Elenen Offsetler</th></tr>"
+                    rows_summary: List[str] = []
+                    for entry in summary_entries:
+                        elim_html = entry["elimination_html"] or "-"
+                        rows_summary.append(
+                            "<tr>"
+                            f"<td>{html.escape(entry['name'])}</td>"
+                            f"<td>{html.escape(entry['xyz_text'])}</td>"
+                            f"<td>{elim_html}</td>"
+                            "</tr>"
+                        )
+                    table = "<table><thead>" + header + "</thead><tbody>" + "".join(rows_summary) + "</tbody></table>"
+                    body = "<div class='card'>" + table + "</div>"
+                else:
+                    body = "\n".join(sections)
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()

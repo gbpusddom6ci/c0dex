@@ -341,6 +341,10 @@ def render_iou_index() -> bytes:
             <input type='checkbox' name='xyz_mode' />
             <span>XYZ kümesi (haber filtreli)</span>
           </label>
+          <label style='display:flex; align-items:center; gap:8px;'>
+            <input type='checkbox' name='xyz_summary' />
+            <span>Özet tablo (yalnız XYZ kümesi)</span>
+          </label>
         </div>
         <div style='margin-top:12px;'>
           <button type='submit'>IOU Tara</button>
@@ -536,6 +540,7 @@ class App120Handler(BaseHTTPRequestHandler):
                 detector = detect_iov_candles if self.path == "/iov" else detect_iou_candles
                 metric_label = "IOV" if self.path == "/iov" else "IOU"
                 xyz_enabled = metric_label == "IOU" and "xyz_mode" in form
+                summary_mode = metric_label == "IOU" and "xyz_summary" in form
                 tolerance_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
                 if metric_label == "IOU":
                     try:
@@ -548,6 +553,7 @@ class App120Handler(BaseHTTPRequestHandler):
                 limit_margin = limit_val + tolerance_val
 
                 sections: List[str] = []
+                summary_entries: List[Dict[str, Any]] = []
                 for entry in files:
                     candles = load_counter_candles(entry)
                     if metric_label == "IOU":
@@ -560,6 +566,7 @@ class App120Handler(BaseHTTPRequestHandler):
                     total_hits = 0
                     rows_html = []
                     offset_has_non_news: Dict[int, bool] = {}
+                    offset_eliminations: Dict[int, List[str]] = {}
                     for item in report.offsets:
                         off_label = f"{('+' + str(item.offset)) if item.offset > 0 else str(item.offset)}"
                         status = item.offset_status or "-"
@@ -615,49 +622,85 @@ class App120Handler(BaseHTTPRequestHandler):
                                         prev_abs = abs(hit.prev_oc)
                                         if oc_abs > limit_margin or prev_abs > limit_margin:
                                             offset_has_non_news[item.offset] = True
+                                            elim_label = f"{hit.ts.strftime('%Y-%m-%d %H:%M:%S')} (seq {hit.seq_value})"
+                                            bucket = offset_eliminations.setdefault(item.offset, [])
+                                            if elim_label not in bucket:
+                                                bucket.append(elim_label)
                                     cells.append(f"<td>{news_cell_html}</td>")
 
                                 rows_html.append("<tr>" + "".join(cells) + "</tr>")
 
                     filename = entry.get("filename") or "uploaded.csv"
-                    xyz_line = ""
-                    if xyz_enabled:
-                        base_offsets = [-3, -2, -1, 0, 1, 2, 3]
-                        xyz_offsets = [o for o in base_offsets if not offset_has_non_news.get(o, False)]
-                        xyz_text = ", ".join((f"+{o}" if o > 0 else str(o)) for o in xyz_offsets) if xyz_offsets else "-"
-                        xyz_line = f"<div><strong>XYZ Kümesi:</strong> {html.escape(xyz_text)}</div>"
                     tolerance_line = f"<div><strong>Tolerans:</strong> {tolerance_val:.5f}</div>" if metric_label == "IOU" else ""
 
-                    info = (
-                        f"<div class='card'>"
-                        f"<h3>{html.escape(filename)}</h3>"
-                        f"<div><strong>Data:</strong> {len(candles)} candles</div>"
-                        f"<div><strong>Zaman Dilimi:</strong> 120m</div>"
-                        f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
-                        f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
-                        f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
-                        f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
-                        f"{tolerance_line}"
-                        f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
-                        f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
-                        f"<div><strong>Offset {metric_label} sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
-                        f"<div><strong>Toplam {metric_label}:</strong> {total_hits}</div>"
-                        f"{xyz_line}"
-                        f"</div>"
-                    )
+                    xyz_text = "-"
+                    if metric_label == "IOU":
+                        base_offsets = [-3, -2, -1, 0, 1, 2, 3]
+                        xyz_offsets = [o for o in base_offsets if not offset_has_non_news.get(o, False)] if xyz_enabled else base_offsets
+                        xyz_text = ", ".join((f"+{o}" if o > 0 else str(o)) for o in xyz_offsets) if xyz_offsets else "-"
 
-                    if rows_html:
-                        if metric_label == "IOU":
-                            header = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th><th>Haber</th></tr></thead><tbody>"
-                        else:
-                            header = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>"
-                        table = header + "".join(rows_html) + "</tbody></table>"
+                    if summary_mode:
+                        elimination_rows = []
+                        for offset in sorted(offset_eliminations.keys()):
+                            offset_label = f"+{offset}" if offset > 0 else str(offset)
+                            ts_joined = ", ".join(offset_eliminations[offset])
+                            elimination_rows.append(f"{offset_label}: {ts_joined}")
+                        elimination_cell = "<br>".join(html.escape(row) for row in elimination_rows) if elimination_rows else "-"
+                        summary_entries.append({
+                            "name": filename,
+                            "xyz_text": xyz_text,
+                            "elimination_html": elimination_cell,
+                        })
                     else:
-                        table = f"<p>{metric_label} mum bulunamadı.</p>"
+                        xyz_line = ""
+                        if metric_label == "IOU" and xyz_enabled:
+                            xyz_line = f"<div><strong>XYZ Kümesi:</strong> {html.escape(xyz_text)}</div>"
 
-                    sections.append(info + table)
+                        info = (
+                            f"<div class='card'>"
+                            f"<h3>{html.escape(filename)}</h3>"
+                            f"<div><strong>Data:</strong> {len(candles)} candles</div>"
+                            f"<div><strong>Zaman Dilimi:</strong> 120m</div>"
+                            f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
+                            f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
+                            f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
+                            f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
+                            f"{tolerance_line}"
+                            f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
+                            f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
+                            f"<div><strong>Offset {metric_label} sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
+                            f"<div><strong>Toplam {metric_label}:</strong> {total_hits}</div>"
+                            f"{xyz_line}"
+                            f"</div>"
+                        )
 
-                body = "\n".join(sections)
+                        if rows_html:
+                            if metric_label == "IOU":
+                                header = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th><th>Haber</th></tr></thead><tbody>"
+                            else:
+                                header = "<table><thead><tr><th>Offset</th><th>Seq</th><th>Index</th><th>Timestamp</th><th>OC</th><th>PrevOC</th><th>DC</th></tr></thead><tbody>"
+                            table = header + "".join(rows_html) + "</tbody></table>"
+                        else:
+                            table = f"<p>{metric_label} mum bulunamadı.</p>"
+
+                        sections.append(info + table)
+
+                if summary_mode:
+                    header = "<tr><th>Dosya</th><th>XYZ Kümesi</th><th>Elenen Offsetler</th></tr>"
+                    rows_summary = []
+                    for entry in summary_entries:
+                        elim_html = entry["elimination_html"] or "-"
+                        rows_summary.append(
+                            "<tr>"
+                            f"<td>{html.escape(entry['name'])}</td>"
+                            f"<td>{html.escape(entry['xyz_text'])}</td>"
+                            f"<td>{elim_html}</td>"
+                            "</tr>"
+                        )
+                    table = "<table><thead>" + header + "</thead><tbody>" + "".join(rows_summary) + "</tbody></table>"
+                    body = "<div class='card'>" + table + "</div>"
+                else:
+                    body = "\n".join(sections)
                 tab_key = "iov" if self.path == "/iov" else "iou"
                 title = f"app120 {metric_label}"
                 self.send_response(200)
