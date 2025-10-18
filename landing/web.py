@@ -157,6 +157,10 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
         <img class='logo' src='{_IMAGE_SOURCES["logo"]}' alt='Lobotomy Launchpad'>
         {''.join(planets)}
       </div>
+      <div class='footer'>
+        <br><br>
+        <font size='-1' color='#ff0000'>MARKETMALWARE</font>
+      </div>
     </center>
   </body>
 </html>"""
