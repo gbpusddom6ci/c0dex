@@ -159,7 +159,7 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
       </div>
       <div class='footer'>
         <br><br>
-        <font size='-1' color='#ff0000'>MARKETMALWARE</font>
+        <font size='-1' color='#ff0000' face='Times New Roman, serif'>marketmalware</font>
       </div>
     </center>
   </body>
