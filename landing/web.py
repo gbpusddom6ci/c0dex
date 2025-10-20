@@ -82,7 +82,7 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
   <head>
     <meta charset='utf-8'>
     {head_links}
-    <title>Lobotomy Launchpad</title>
+    <title>malw.ooo</title>
     <style>
       html, body {{
         margin: 0;
@@ -154,7 +154,7 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
   <body bgcolor='#000000' background='/assets/bg_stars.gif' text='#ff0000' link='#ff4c4c' vlink='#ff4c4c' alink='#ff4c4c'>
     <center>
       <div class='portal'>
-        <img class='logo' src='{_IMAGE_SOURCES["logo"]}' alt='Lobotomy Launchpad'>
+        <img class='logo' src='{_IMAGE_SOURCES["logo"]}' alt='malw.ooo'>
         {''.join(planets)}
       </div>
       <div class='footer'>
