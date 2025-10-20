@@ -1,5 +1,7 @@
 # Fly.io için optimize edilmiş Dockerfile
-FROM python:3.11-slim
+# Docker Hub'daki genel 3.11-slim etiketinde yaşanan manifest hatalarını
+# aşmak için kararlı bir slim sürüme pinliyoruz.
+FROM python:3.11.7-slim-bullseye
 
 # Çalışma dizini
 WORKDIR /app
