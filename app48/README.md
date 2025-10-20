@@ -8,7 +8,8 @@ app48, 48 dakikalık (48m) zaman diliminde çalışan, UTC-4 18:00 başlangıçl
 - 48m akışı: 18:00, 18:48, 19:36, 20:24, 21:12, ... şeklinde ilerler.
 - Sentetik mum ekleme: İlk gün HARİÇ, her gün için 17:12 -> 19:36 arasına 18:00 ve 18:48 mumları eklenir (veride 17:12 ve 19:36 mevcutsa). OHLC değerleri 17:12 ile 19:36 arasındaki doğrusal geçişe göre üretilir (open=önceki close, close ara değeri; high/low=open/close'un min/max'ı).
 - DC kuralı: DC mumlar sayımda atlanır (adım aralarında DC olmayan mumlar sayılır). Dizinin ilk değeri (ör. 1) başlangıç mumuna yazılır (DC olsa da).
-- DC istisnası (app48): 13:12 - 19:36 saatleri arasındaki DC mumlar normal mum kabul edilir ve sayımda atlanmaz.
+- DC istisnası (app48): Pazartesi–Cumartesi 13:12 - 19:36 (19:36 dahil) aralığındaki mumlar DC sayılmaz; bu slotlar arasında kalan 18:00, 18:48 ve 19:36 mumları normal kabul edilir.
+- IOU kuralı: 18:00, 18:48 ve 19:36 zaman damgalı mumlar IOU listesine girmez.
 - Diziler: S1 ve S2 agents.md’de tanımlandığı gibidir.
 
 ## CLI Kullanımı

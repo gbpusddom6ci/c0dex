@@ -20,7 +20,7 @@
 
 ## DC ve Offset Kuralları
 - Standart DC koşulları geçerlidir; ardışık DC engellenir, 18:00 baz mumları DC sayılmaz.
-- Özel istisna: Pazartesi–Cumartesi 13:12–19:36 arasındaki mumlar normal mum kabul edilerek DC sayılmaz.
+- Özel istisna: Pazartesi–Cumartesi 13:12 ile 19:36 (19:36 dahil) arasındaki mumlar DC sayılmaz; buna 18:00, 18:48 ve 19:36 slotları da dahildir.
 - Sentetik saatlerde DC değerlendirmesi istisnayı koruyacak şekilde yapılır; offset sütunları aynı zaman damgasına sabitlenmez.
 - Pozitif offsetler DC olmayan ilk gerçek muma ilerleyerek hesaplanır; kapsayıcı kural sequence zamanını DC mumuna sabitleyebilir.
 
@@ -30,6 +30,7 @@
 - Varsayılan tolerans 0.005’tir; form alanı üzerinden değiştirilebilir.
 - Sonuçlar sentetik (`syn`) veya gerçek (`real`) etiketleriyle kartlarda gösterilir.
 - XYZ filtresi aktifken haber taşımayan offsetler elenir; tatil satırları bilgi amaçlı listelenir.
+- 18:00, 18:48 ve 19:36 zaman damgalarına sahip hiç bir mum IOU olarak raporlanmaz.
 
 ## Analiz ve Matrix Sekmeleri
 - Analiz sekmesi sequence akışını, DC durumlarını, OC/PrevOC değerlerini ve tahmini slotları sunar.

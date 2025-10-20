@@ -187,8 +187,16 @@ def compute_dc_flags(candles: List[Candle]) -> List[Optional[bool]]:
     for i in range(1, len(candles)):
         prev = candles[i - 1]
         cur = candles[i]
+        weekday = cur.ts.weekday()
+        tod = cur.ts.time()
         within = min(prev.open, prev.close) <= cur.close <= max(prev.open, prev.close)
         cond = cur.high <= prev.high and cur.low >= prev.low and within
+        if weekday != 6 and tod in {
+            dtime(hour=18, minute=0),
+            dtime(hour=18, minute=48),
+            dtime(hour=19, minute=36),
+        }:
+            cond = False
         prev_flag = bool(flags[i - 1]) if flags[i - 1] is not None else False
         if prev_flag and cond:
             cond = False
@@ -296,7 +304,7 @@ def compute_sequence_allocations(
             candle_ts = candles[cur_idx].ts
             tod = candle_ts.time()
             weekday = candle_ts.weekday()
-            dc_exception = (dtime(13, 12) <= tod < dtime(19, 36)) and weekday != 6
+            dc_exception = (dtime(13, 12) <= tod <= dtime(19, 36)) and weekday != 6
             if is_dc and not dc_exception:
                 if counted == steps_needed - 1:
                     dc_candidate = cur_idx
@@ -332,7 +340,7 @@ def _is_effective_dc(candles: List[Candle], dc_flags: List[Optional[bool]], idx:
     candle_ts = candles[idx].ts
     tod = candle_ts.time()
     weekday = candle_ts.weekday()
-    if weekday != 6 and (dtime(13, 12) <= tod < dtime(19, 36)):
+    if weekday != 6 and (dtime(13, 12) <= tod <= dtime(19, 36)):
         return False
     return True
 
@@ -637,7 +645,7 @@ def detect_iou_candles(
     limit: float,
     tolerance: float = IOU_TOLERANCE,
 ) -> SignalReport:
-    return _detect_signal_candles(
+    report = _detect_signal_candles(
         candles,
         sequence,
         limit,
@@ -645,6 +653,16 @@ def detect_iou_candles(
         condition=lambda oc, prev: oc * prev > 0,
         empty_error="IOU analizi için mum verisi gerekli",
     )
+    restricted_tods = {
+        dtime(hour=18, minute=0),
+        dtime(hour=18, minute=48),
+        dtime(hour=19, minute=36),
+    }
+    for offset in report.offsets:
+        offset.hits = [
+            hit for hit in offset.hits if hit.ts.time() not in restricted_tods
+        ]
+    return report
 
 
 def adjust_to_output_tz(candles: List[Candle], input_tz: str) -> Tuple[List[Candle], str]:

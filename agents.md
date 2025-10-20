@@ -60,8 +60,8 @@ Gerekli sütunlar: `Time`, `Open`, `High`, `Low`, `Close (Last)` (eş anlamlıla
 Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değeri önceki mumun `[Open, Close]` aralığındadır. Aynı anda iki DC olamaz (ardışık DC engellenir). Varsayılan olarak 18:00 mumu asla DC olmaz.
 
 **İstisna Saatleri:**
-- app321: 13:00–20:00 arasında DC’ler normal mum kabul edilir.
-- app48: 13:12–19:36 arasında DC’ler normal mum kabul edilir.
+- app321: 13:00–20:00 arasında DC’ler normal mum kabul edilir; ayrıca 20:00 mumu (Pazar hariç) asla DC sayılmaz.
+- app48: 13:12–19:36 (19:36 dahil) arasında DC’ler normal mum kabul edilir.
 - app72: 18:00 (Pazar dahil), Cuma 16:48, (Pazar hariç) 19:12 ve 20:24, Cuma 16:00 DC olamaz.
 - app80: (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:40 (hafta kapanışı, ilk hafta dahil) DC olamaz.
 - app120: İstisna yok; yalnızca kapsayıcı kural uygulanır. Cuma 16:00 hafta kapanışı DC sayılmaz.
@@ -84,9 +84,9 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
 Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasına sabitlemesini engeller. Eğer 20:00 ve 00:00 aynı anda DC ise sayım 22:00 → 02:00 → 04:00 diye devam eder; yani her pozitif offset “bir sonraki DC olmayan mumu” seçer.
 
 **Uygulama Bazlı Notlar:**
-- `app321` (60m) pozitif offset başlangıçlarını DC olmayan mumlara kaydırır; DC istisnası yalnızca Pazartesi–Cumartesi 13:00 ≤ saat < 20:00 için geçerlidir. Pazar günleri veya 20:00 mumu istisna dışıdır.
+- `app321` (60m) pozitif offset başlangıçlarını DC olmayan mumlara kaydırır; DC istisnası Pazartesi–Cumartesi 13:00 ≤ saat ≤ 20:00 için geçerlidir ve bu aralıkta 20:00 mumu (Pazar hariç) daima normal kabul edilir.
 - `app72` ve `app80` (72m / 80m) aynı mantığı kendi dakika adımları ile uygular. Pozitif offset teorik hedefi DC ise sayaç uygun gerçek muma ilerleyip diziyi 72/80 dakikalık farkla korur.
-- `app48` (48m) sentetik mumlar üretir; pozitif offset hesaplaması yalnızca gerçek DC sayılan (Pazartesi–Cumartesi 13:12 ≤ saat < 19:36) mumları atlar. Pazar günleri ve 19:36 dahilindeki mumlar normal DC kontrolüne tabidir. Sentetik saatlerdeki DC istisnası korunur, bu sayede offset sütunları yine çakışmaz.
+- `app48` (48m) sentetik mumlar üretir; pozitif offset hesaplaması yalnızca gerçek DC sayılan (Pazartesi–Cumartesi 13:12 ≤ saat ≤ 19:36) mumları atlar. Pazar günleri hariç bu saatlerdeki 18:00, 18:48 ve 19:36 slotları normal mum kabul edilir. Sentetik saatlerdeki DC istisnası korunur, bu sayede offset sütunları yine çakışmaz.
 - Negatif offsetlerde veri zaten 18:00’dan önce bulunmadığından ekstra işleme gerek yoktur; mevcut tahmin mantığı olduğu gibi bırakılır.
 
 ### 3.5 OC / PrevOC
@@ -165,9 +165,9 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
 
 ### 4.4 app48 – 48 Dakikalık Analiz
 - **Özellikler:** Sentetik mum ekleme (ilk gün hariç, her gün 18:00 ve 18:48). Web portu 2020.
-- **IOU Tarama:** Limit, ± tolerans (varsayılan 0.005) ve dizi seçimleriyle çoklu CSV analiz eder; `limit + tolerans` eşiğini geçen satırlar sentetik/gerçek ayrımı `syn/real` etiketiyle gösterilerek raporlanır.
+- **IOU Tarama:** Limit, ± tolerans (varsayılan 0.005) ve dizi seçimleriyle çoklu CSV analiz eder; `limit + tolerans` eşiğini geçen satırlar sentetik/gerçek ayrımı `syn/real` etiketiyle gösterilerek raporlanır. 18:00, 18:48 ve 19:36 mumları IOU olarak hiçbir zaman listelenmez.
 - **Sentetik Mum Akışı:** 17:12 ve 19:36 gerçek mumları arasına 18:00/18:48 sentetik mumlar eklenir; open/close lineer şekilde setlenir (open = önceki close, close = sonraki open’a doğru interpolasyon, high/low min/max).
-- **DC İstisnası:** 13:12–19:36 arası DC’ler normal kabul edilir.
+- **DC İstisnası:** 13:12–19:36 (19:36 dahil) arası DC’ler normal kabul edilir.
 - **CLI Örnekleri:**
   ```bash
   python3 -m app48.main --csv data.csv --input-tz UTC-5 --sequence S2 --offset +1 --show-dc
@@ -176,8 +176,8 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
 
 ### 4.5 app321 – 60 Dakikalık Analiz
 - **Port 2019** için web arayüzü; sekmeler: Analiz, DC List, Matrix, IOU Tarama.
-- **IOU Tarama:** Multi-upload desteği; kullanıcı limit ve ± tolerans (varsayılan 0.005) belirler, `|OC|`, `|PrevOC| ≥ limit + tolerans` koşulunu sağlayan aynı işaretli değerler offset bazında listelenir.
-- **DC İstisnası:** 13:00–20:00 arası DC’ler normal mum sayılır.
+- **IOU Tarama:** Multi-upload desteği; kullanıcı limit ve ± tolerans (varsayılan 0.005) belirler, `|OC|`, `|PrevOC| ≥ limit + tolerans` koşulunu sağlayan aynı işaretli değerler offset bazında listelenir. 18:00, 19:00 ve 20:00 mumları IOU olarak hiçbir zaman raporlanmaz.
+- **DC İstisnası:** 13:00–20:00 arası DC’ler normal mum sayılır; ayrıca 20:00 mumu (Pazar hariç) asla DC olmaz.
 - **Tahmin:** Sequence değerleri veri aralığı dışına taşarsa tahmini timestamp raporlanır.
 - **Matrix Sekmesi:** Tüm offset değerleri tek tabloda saat/OC/PrevOC olarak listelenir.
 - **CLI Örnekleri:**
