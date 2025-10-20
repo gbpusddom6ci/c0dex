@@ -1,13 +1,18 @@
 import argparse
 import csv
 from dataclasses import dataclass
-from datetime import datetime, time as dtime, timedelta
+from datetime import datetime, date, time as dtime, timedelta
 from typing import List, Optional, Tuple, Dict, Callable
 
 
 MINUTES_PER_STEP = 72
 DEFAULT_START_TOD = dtime(hour=18, minute=0)
 IOU_TOLERANCE = 0.005
+RESTRICTED_IOU_TIMES = {
+    dtime(hour=18, minute=0),
+    dtime(hour=19, minute=12),
+    dtime(hour=20, minute=24),
+}
 
 
 @dataclass
@@ -121,6 +126,32 @@ def load_candles(path: str) -> List[Candle]:
             out.append(Candle(ts=t, open=o, high=h, low=l, close=c))
     out.sort(key=lambda x: x.ts)
     return out
+
+
+def find_second_sunday_date(candles: List[Candle]) -> Optional[date]:
+    """
+    Returns the second distinct Sunday date encountered in the dataset.
+    Used to allow IOU hits on that day while restricting other Sundays.
+    """
+    seen: List[date] = []
+    for candle in candles:
+        if candle.ts.weekday() == 6:  # Sunday
+            c_date = candle.ts.date()
+            if not seen or seen[-1] != c_date:
+                seen.append(c_date)
+                if len(seen) == 2:
+                    return seen[1]
+    return None
+
+
+def find_first_friday_end_ts(candles: List[Candle]) -> Optional[datetime]:
+    """
+    Returns the timestamp of the first week's Friday 16:48 candle, if present.
+    """
+    for candle in candles:
+        if candle.ts.weekday() == 4 and candle.ts.hour == 16 and candle.ts.minute == 48:
+            return candle.ts
+    return None
 
 
 def find_start_index(candles: List[Candle], start_tod: dtime) -> Tuple[int, str]:
@@ -592,7 +623,7 @@ def detect_iou_candles(
     limit: float,
     tolerance: float = IOU_TOLERANCE,
 ) -> SignalReport:
-    return _detect_signal_candles(
+    report = _detect_signal_candles(
         candles,
         sequence,
         limit,
@@ -600,6 +631,22 @@ def detect_iou_candles(
         condition=lambda oc, prev: oc * prev > 0,
         empty_error="IOU analizi için mum verisi gerekli",
     )
+    second_sunday = find_second_sunday_date(candles)
+    first_friday_1648 = find_first_friday_end_ts(candles)
+    for offset in report.offsets:
+        if not offset.hits:
+            continue
+        filtered_hits: List[SignalHit] = []
+        for hit in offset.hits:
+            ts = hit.ts
+            is_restricted_time = ts.time() in RESTRICTED_IOU_TIMES
+            is_second_sunday = second_sunday is not None and ts.date() == second_sunday
+            is_first_week_friday_end = first_friday_1648 is not None and ts == first_friday_1648
+            if (is_restricted_time and not is_second_sunday) or is_first_week_friday_end:
+                continue
+            filtered_hits.append(hit)
+        offset.hits = filtered_hits
+    return report
 
 
 def fmt_ts(dt: Optional[datetime]) -> str:

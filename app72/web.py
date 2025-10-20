@@ -329,6 +329,7 @@ def render_iou_index() -> bytes:
       </form>
     </div>
     <p>IOU taraması, limit üstündeki OC/PrevOC ikililerinden aynı işaret taşıyanları dosya bazlı gösterir. Birden fazla CSV seçebilirsin.</p>
+    <p><strong>Not:</strong> 2 haftalık veri varsayımıyla, ikinci Pazar günü hariç 18:00, 19:12 ve 20:24 mumları IOU sayılmaz; ayrıca ilk haftanın Cuma 16:48 mumu da IOU sonucuna dahil edilmez. Bu mumlar XYZ filtresi için ayrıca elenmez.</p>
     """
     return page("app72 - IOU", body, active_tab="iou")
 
