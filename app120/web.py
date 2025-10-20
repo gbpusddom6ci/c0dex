@@ -602,12 +602,16 @@ class App120Handler(BaseHTTPRequestHandler):
                                 if metric_label == "IOU":
                                     news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP, null_back_minutes=60)
                                     detail_lines: List[str] = []
-                                    effective_news = False
+                                    has_effective_news = False
+                                    has_holiday_news = False
+                                    has_all_day_news = False
                                     for ev in news_hits:
                                         title = ev.get("title", "")
                                         title_html = html.escape(title)
-                                        if ev.get("all_day"):
+                                        is_all_day = bool(ev.get("all_day"))
+                                        if is_all_day:
                                             time_part = "All Day"
+                                            has_all_day_news = True
                                         else:
                                             time_part = html.escape(ev.get("time") or "-")
                                         line = f"{time_part} {title_html}"
@@ -616,11 +620,25 @@ class App120Handler(BaseHTTPRequestHandler):
                                         is_holiday = "holiday" in title.lower()
                                         if is_holiday:
                                             line += " (holiday)"
+                                            has_holiday_news = True
                                         else:
-                                            effective_news = True
+                                            if not is_all_day:
+                                                has_effective_news = True
                                         detail_lines.append(line)
-                                    news_cell_html = "Var<br>" + "<br>".join(detail_lines) if detail_lines else "Yok"
-                                    if xyz_enabled and not effective_news:
+                                    if detail_lines:
+                                        if has_effective_news:
+                                            prefix = "Var"
+                                        elif has_holiday_news:
+                                            prefix = "Holiday"
+                                        elif has_all_day_news:
+                                            prefix = "AllDay"
+                                        else:
+                                            prefix = "Yok"
+                                        news_cell_html = prefix + "<br>" + "<br>".join(detail_lines)
+                                    else:
+                                        news_cell_html = "Yok"
+                                    info_only_news = has_holiday_news or has_all_day_news
+                                    if xyz_enabled and not has_effective_news and not info_only_news:
                                         oc_abs = abs(hit.oc)
                                         prev_abs = abs(hit.prev_oc)
                                         if oc_abs > limit_margin or prev_abs > limit_margin:
