@@ -8,6 +8,14 @@ from typing import List, Optional, Tuple, Dict, Callable
 MINUTES_PER_STEP = 80
 DEFAULT_START_TOD = dtime(hour=18, minute=0)
 IOU_TOLERANCE = 0.005
+FORBIDDEN_TIMES_ALWAYS = {
+    dtime(hour=18, minute=0),
+}
+FORBIDDEN_TIMES_NON_SUNDAY = {
+    dtime(hour=19, minute=20),
+    dtime(hour=20, minute=40),
+}
+CLOSE_TOD = dtime(hour=16, minute=40)
 
 
 @dataclass
@@ -148,32 +156,25 @@ def compute_dc_flags(candles: List[Candle]) -> List[Optional[bool]]:
         within = min(prev.open, prev.close) <= cur.close <= max(prev.open, prev.close)
         cond = cur.high <= prev.high and cur.low >= prev.low and within
         
-        # Pazar hariç, 18:00, 19:20, 20:40 mumları DC olamaz (günlük cycle noktaları)
-        if cur.ts.weekday() != 6:  # Pazar değilse (6 = Sunday)
-            if (cur.ts.hour == 18 and cur.ts.minute == 0) or \
-               (cur.ts.hour == 19 and cur.ts.minute == 20) or \
-               (cur.ts.hour == 20 and cur.ts.minute == 40):
-                cond = False
-        else:
+        # Uygulama kısıtları: 18:00 her zaman, 19:20/20:40 Pazar hariç, Cuma 16:40 DC olamaz
+        weekday = cur.ts.weekday()
+        tod = cur.ts.time()
+        if tod in FORBIDDEN_TIMES_ALWAYS:
+            cond = False
+        elif tod in FORBIDDEN_TIMES_NON_SUNDAY and weekday != 6:
+            cond = False
+        if weekday == 6 and tod == CLOSE_TOD:
             is_week_close = False
-            if cur.ts.hour == 16 and cur.ts.minute == 40:
-                if i + 1 >= len(candles):
-                    is_week_close = True
-                else:
-                    gap_minutes = (candles[i + 1].ts - cur.ts).total_seconds() / 60
-                    if gap_minutes > MINUTES_PER_STEP:
-                        is_week_close = True
-            if is_week_close:
-                cond = False
-        # Cuma 16:40 (piyasa kapanışı) DC olarak işaretlenmez; özellikle haftanın ilk kapanışı için
-        if cur.ts.weekday() == 4 and cur.ts.hour == 16 and cur.ts.minute == 40:
-            is_week_close = True
-            if i + 1 < len(candles):
+            if i + 1 >= len(candles):
+                is_week_close = True
+            else:
                 gap_minutes = (candles[i + 1].ts - cur.ts).total_seconds() / 60
-                if gap_minutes <= MINUTES_PER_STEP:
-                    is_week_close = False
+                if gap_minutes > MINUTES_PER_STEP:
+                    is_week_close = True
             if is_week_close:
                 cond = False
+        if weekday == 4 and tod == CLOSE_TOD:
+            cond = False
         prev_flag = bool(flags[i - 1]) if flags[i - 1] is not None else False
         if prev_flag and cond:
             cond = False
@@ -594,7 +595,7 @@ def detect_iou_candles(
     limit: float,
     tolerance: float = IOU_TOLERANCE,
 ) -> SignalReport:
-    return _detect_signal_candles(
+    report = _detect_signal_candles(
         candles,
         sequence,
         limit,
@@ -602,6 +603,23 @@ def detect_iou_candles(
         condition=lambda oc, prev: oc * prev > 0,
         empty_error="IOU analizi için mum verisi gerekli",
     )
+    for offset in report.offsets:
+        if not offset.hits:
+            continue
+        filtered_hits: List[SignalHit] = []
+        for hit in offset.hits:
+            ts = hit.ts
+            weekday = ts.weekday()
+            tod = ts.time()
+            if tod in FORBIDDEN_TIMES_ALWAYS:
+                continue
+            if tod in FORBIDDEN_TIMES_NON_SUNDAY and weekday != 6:
+                continue
+            if weekday == 4 and tod == CLOSE_TOD:
+                continue
+            filtered_hits.append(hit)
+        offset.hits = filtered_hits
+    return report
 
 
 def fmt_ts(dt: Optional[datetime]) -> str:

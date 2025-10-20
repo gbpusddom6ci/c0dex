@@ -1,13 +1,20 @@
 import argparse
 import csv
 from dataclasses import dataclass
-from datetime import datetime, time as dtime, timedelta
-from typing import List, Optional, Tuple, Dict, Callable
+from datetime import datetime, date, time as dtime, timedelta
+from typing import List, Optional, Tuple, Dict, Callable, Set
 
 
 MINUTES_PER_STEP = 120
 DEFAULT_START_TOD = dtime(hour=18, minute=0)
 IOU_TOLERANCE = 0.005
+FORBIDDEN_TIMES_ALWAYS = {
+    dtime(hour=18, minute=0),
+}
+FORBIDDEN_TIMES_NON_SUNDAY = {
+    dtime(hour=20, minute=0),
+}
+FRIDAY_CLOSE_TOD = dtime(hour=16, minute=0)
 
 
 @dataclass
@@ -123,6 +130,27 @@ def load_candles(path: str) -> List[Candle]:
     return out
 
 
+def find_sunday_dates(candles: List[Candle]) -> List[date]:
+    seen: List[date] = []
+    for candle in candles:
+        if candle.ts.weekday() == 6:
+            c_date = candle.ts.date()
+            if not seen or seen[-1] != c_date:
+                seen.append(c_date)
+    return seen
+
+
+def should_exclude_for_signals(ts: datetime, sunday_dates: Set[date]) -> bool:
+    tod = ts.time()
+    if tod in FORBIDDEN_TIMES_ALWAYS:
+        return True
+    if tod in FORBIDDEN_TIMES_NON_SUNDAY and ts.date() not in sunday_dates:
+        return True
+    if ts.weekday() == 4 and tod == FRIDAY_CLOSE_TOD:
+        return True
+    return False
+
+
 def find_start_index(candles: List[Candle], start_tod: dtime) -> Tuple[int, str]:
     if not candles:
         return 0, "no-data"
@@ -142,12 +170,13 @@ def find_start_index(candles: List[Candle], start_tod: dtime) -> Tuple[int, str]
 
 def compute_dc_flags(candles: List[Candle]) -> List[Optional[bool]]:
     flags: List[Optional[bool]] = [None] * len(candles)
+    sunday_dates = set(find_sunday_dates(candles))
     for i in range(1, len(candles)):
         prev = candles[i - 1]
         cur = candles[i]
         within = min(prev.open, prev.close) <= cur.close <= max(prev.open, prev.close)
         cond = cur.high <= prev.high and cur.low >= prev.low and within
-        if cur.ts.hour == DEFAULT_START_TOD.hour and cur.ts.minute == DEFAULT_START_TOD.minute:
+        if should_exclude_for_signals(cur.ts, sunday_dates):
             cond = False
         else:
             is_week_close = False
@@ -626,7 +655,7 @@ def detect_iou_candles(
     limit: float,
     tolerance: float = IOU_TOLERANCE,
 ) -> SignalReport:
-    return _detect_signal_candles(
+    report = _detect_signal_candles(
         candles,
         sequence,
         limit,
@@ -634,6 +663,17 @@ def detect_iou_candles(
         condition=lambda oc, prev: oc * prev > 0,
         empty_error="IOU analizi için mum verisi gerekli",
     )
+    sunday_dates = set(find_sunday_dates(candles))
+    for offset in report.offsets:
+        if not offset.hits:
+            continue
+        filtered_hits: List[SignalHit] = []
+        for hit in offset.hits:
+            if should_exclude_for_signals(hit.ts, sunday_dates):
+                continue
+            filtered_hits.append(hit)
+        offset.hits = filtered_hits
+    return report
 
 
 def fmt_ts(dt: Optional[datetime]) -> str:

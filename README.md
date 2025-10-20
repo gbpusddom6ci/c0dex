@@ -27,6 +27,7 @@ Forex trading için çoklu timeframe analiz araçları.
 - DC istisnası ve offset sistemi
 - 60→120 dakika dönüştürücü
 - Port: `2120`
+- 18:00 mumları raporlanmaz; 20:00 mumları yalnızca Pazar günlerinde geçerlidir; Cuma 16:00 mumları DC/IOU kapsamı dışındadır.
 
 ### 🕐 app321 (60 dakika)
 - 60 dakikalık sayım araçları
