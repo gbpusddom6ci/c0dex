@@ -1,151 +1,151 @@
-# C0dex Multi-Timeframe Analysis Suite
+# C0dex Çoklu Timeframe Analiz Paketi
 
-This repository bundles five timeframe-specific analysis applications—**app48**, **app72**, **app80**, **app120**, and **app321**—alongside shared tooling. Each app can ingest market candles, normalise timestamps, detect distorted candles (DC), align sequence offsets, and surface IOU/IOV signals through both CLI utilities and lightweight web interfaces.
+Bu depo; **app48**, **app72**, **app80**, **app120** ve **app321** olmak üzere beş farklı timeframe uygulamasını ve ortak araçları bir araya getirir. Her uygulama CSV verisini okur, zaman damgalarını normalize eder, distorted candle (DC) işaretler, sequence ve offset hizalamalarını kurar ve hem CLI hem de hafif web arayüzleri üzerinden IOU/IOV signal scan sonuçlarını sunar.
 
-Supporting packages round out the stack: `appsuite` exposes the apps under a single reverse proxy, `landing` provides a simple entry page, `calendar_md` converts Markdown economic calendars into JSON feeds, and `favicon` hosts shared assets. The goal is to give any maintainer everything needed to understand and operate the system without leaving this repository.
+Destekleyici paketler: `appsuite` tüm uygulamaları tek host altında bir reverse proxy ile sunar, `landing` basit bir giriş sayfası sağlar, `calendar_md` Markdown ekonomik takvimlerini JSON’a çevirir, `favicon` ortak varlıkları barındırır. Amaç; bu repo dışına çıkmadan sistemi anlamak ve çalıştırmak için gereken her şeyi tek yerde toplamaktır.
 
 ---
 
-## Table of Contents
+## İçindekiler
 
 1. [Technology Stack](#technology-stack)
-2. [Directory Layout](#directory-layout)
-3. [Application Overview](#application-overview)
-4. [Data Flow & Shared Rules](#data-flow--shared-rules)
-5. [Distorted Candle Exceptions](#distorted-candle-exceptions)
-6. [IOU Exclusions](#iou-exclusions)
-7. [IOV / IOU Signal Engine](#iov--iou-signal-engine)
-8. [News Integration](#news-integration)
-9. [CLI & Web Usage](#cli--web-usage)
-10. [Sample Datasets](#sample-datasets)
-11. [Deployment Notes](#deployment-notes)
-12. [Developer Tips](#developer-tips)
+2. [Dizin Yapısı](#dizin-yapısı)
+3. [Uygulama Özeti](#uygulama-özeti)
+4. [Veri Akışı ve Ortak Kurallar](#veri-akışı-ve-ortak-kurallar)
+5. [Distorted Candle (DC) İstisnaları](#distorted-candle-dc-İstisnaları)
+6. [IOU Kısıtları](#iou-kısıtları)
+7. [IOV / IOU Sinyal Motoru](#iov--iou-sinyal-motoru)
+8. [Haber Entegrasyonu](#haber-entegrasyonu)
+9. [CLI ve Web Kullanımı](#cli-ve-web-kullanımı)
+10. [Örnek Veri Setleri](#örnek-veri-setleri)
+11. [Dağıtım Notları](#dağıtım-notları)
+12. [Geliştirici İpuçları](#geliştirici-ipuçları)
 
 ---
 
 ## Technology Stack
 
-- Python **3.11** (`.python-version` locks the runtime for Render deployments).
-- Standard-library-heavy codebase; web servers use `http.server` for minimal HTTP handling.
-- `gunicorn` ready for production hosting (see `requirements.txt`).
-- No pandas/numpy dependency; data processing relies on custom helpers.
+- Python 3.11 (`.python-version` Render dağıtımı için runtime’ı kilitler)
+- Standard library ağırlıklı; web katmanları `http.server` tabanlı minimal HTTP servisleridir
+- Production’da `gunicorn` (bkz. `requirements.txt`)
+- pandas/numpy yok; veri işleme custom yardımcı fonksiyonlarla yapılır
 
 ---
 
-## Directory Layout
+## Dizin Yapısı
 
 ```
-app48/      48-minute analysis package (CLI + web)
-app72/      72-minute analysis package
-app80/      80-minute analysis package
-app120/     120-minute analysis package
-app321/     60-minute analysis package
-appsuite/   Reverse proxy that aggregates every app
-landing/    Static landing page with navigation cards
+app48/      48 dakikalık analiz paketi (CLI + web)
+app72/      72 dakikalık analiz paketi
+app80/      80 dakikalık analiz paketi
+app120/     120 dakikalık analiz paketi
+app321/     60 dakikalık analiz paketi
+appsuite/   Reverse proxy ve birleşik arayüz
+landing/    Basit landing page
 calendar_md/Markdown → JSON economic calendar converter (CLI + web)
-economic_calendar/ Sample JSON calendars consumed by IOU pages
-favicon/    Shared favicon + manifest assets
-ornek/      Curated CSV samples for manual testing
+economic_calendar/ IOU sayfalarının tükettiği örnek JSON takvimler
+favicon/    Ortak favicon + manifest varlıkları
+ornek/      Manuel eklenmiş CSV örnekleri (test)
 ```
 
-Timeframe folders follow the same pattern:
+Her timeframe klasörü benzer bir kalıbı izler:
 
-- `counter.py` or `main.py`: CLI counters, converters, and prediction helpers.
-- `web.py`: Lightweight HTTP server with HTML forms, multi-file upload, and result tables.
-- `__init__.py`: Package initialiser and shared utilities.
-
----
-
-## Application Overview
-
-| App      | Timeframe | Port | Converter | Highlighted Rules |
-|----------|-----------|------|-----------|-------------------|
-| app48    | 48 min    | 2020 | 12→48     | Synthetic 18:00 & 18:48 candles; 18:00/18:48/19:36 excluded from DC & IOU |
-| app72    | 72 min    | 2172 | 12→72     | 18:00, 19:12, 20:24 barred from DC; first-week Friday 16:48 excluded from IOU |
-| app80    | 80 min    | 2180 | 20→80     | 18:00, 19:20, 20:40 and every Friday 16:40 excluded from DC & IOU |
-| app120   | 120 min   | 2120 | 60→120    | 18:00 excluded from DC & IOU; 20:00 (except Sundays) and every Friday 16:00 excluded |
-| app321   | 60 min    | 2019 | —         | 20:00 (non-Sunday) cannot be DC; 18:00/19:00/20:00 excluded from IOU |
-| appsuite | —         | 2100 | —         | Hosts every app under one reverse proxy |
-| landing  | —         | 2000 | —         | Provides cards and quick links |
-
-Every web UI supports multi-file CSV uploads, IOU/IOV scan tabs, and news-driven annotations rendered per file card.
+- `counter.py` veya `main.py`: CLI sayaçları, converter’lar ve tahmin yardımcıları
+- `web.py`: Minimal HTTP server (HTML formlar, multi-file upload, sonuç tabloları)
+- `__init__.py`: Paket bildirimi ve ortak yardımcılar
 
 ---
 
-## Data Flow & Shared Rules
+## Uygulama Özeti
 
-1. **CSV ingestion** – Column headers such as `Time`, `Open`, `High`, `Low`, `Close (Last)` are normalised (synonyms accepted). Invalid rows drop out; rows are sorted by timestamp.
-2. **Timezone normalisation** – If the source is `UTC-5`, all timestamps shift forward by 60 minutes to align with `UTC-4`.
-3. **Synthetic candles** – app48 injects daily 18:00 and 18:48 synthetic candles (except on the first day) to preserve the closing window.
-4. **DC computation** – `compute_dc_flags` marks distorted candles and prevents back-to-back DCs. Positive offsets step forward until they land on a non-DC candle.
-5. **Sequence alignment** – Both `S1` (1,3,7,...) and `S2` (1,5,9,...) sequences are supported. The container rule pins sequence indices to DC timestamps when required.
-6. **OC / PrevOC** – `OC = Close - Open`; `PrevOC` is the previous candle’s OC. Predictive rows display `-` for both.
-7. **Offset system** – The first 18:00 candle acts as the base. Offsets span `-3` through `+3`. Missing candles trigger `pred` timestamps derived from the offset cadence.
+| Uygulama | Timeframe | Port | Converter | Öne Çıkan Kurallar |
+|----------|-----------|------|-----------|--------------------|
+| app48    | 48 dk     | 2020 | 12→48     | Synthetic 18:00 & 18:48; 18:00/18:48/19:36 DC & IOU dışında |
+| app72    | 72 dk     | 2172 | 12→72     | 18:00, 19:12, 20:24 DC olamaz; ilk haftanın Cuma 16:48 IOU dışında |
+| app80    | 80 dk     | 2180 | 20→80     | 18:00, 19:20, 20:40 ve tüm Cuma 16:40 DC & IOU dışında |
+| app120   | 120 dk    | 2120 | 60→120    | 18:00 DC & IOU dışında; Pazar hariç 20:00 ve tüm Cuma 16:00 hariç |
+| app321   | 60 dk     | 2019 | —         | Pazar dışı 20:00 DC olamaz; 18:00/19:00/20:00 IOU dışında |
+| appsuite | —         | 2100 | —         | Tüm uygulamalar reverse proxy arkasında |
+| landing  | —         | 2000 | —         | Kartlar ve hızlı linkler |
 
----
-
-## Distorted Candle Exceptions
-
-- Baseline rule: a candle is DC when `High ≤ prev.High`, `Low ≥ prev.Low`, and `Close` falls inside the previous candle’s `[Open, Close]` range; consecutive DCs are disallowed.
-- The 18:00 base candle is never marked as DC unless a module explicitly overrides it (none do).
-- **app48** – Candles between 13:12 and 19:36 are treated as normal; synthetic 18:00 and 18:48 candles are never DC.
-- **app72** – 18:00, 19:12, 20:24, and Friday 16:00 are never DC.
-- **app80** – 18:00, 19:20, 20:40, and every Friday 16:40 are never DC.
-- **app120** – 18:00 and Friday 16:00 are never DC; 20:00 candles are only eligible on Sundays.
-- **app321** – 20:00 (non-Sunday) is never DC; additionally, 13:00–20:00 on weekdays are treated as normal candles even if they match the DC formula.
+Tüm web arayüzleri multi-file CSV upload destekler; IOU/IOV sekmeleri ve dosya kartlarında news etiketleri bulunur.
 
 ---
 
-## IOU Exclusions
+## Veri Akışı ve Ortak Kurallar
 
-Each IOU scan rejects the following timestamps outright:
-
-- **app48** – 18:00, 18:48, 19:36.
-- **app72** – 18:00, 19:12, 20:24, and the first-week Friday 16:48 candle within the two-week dataset.
-- **app80** – 18:00, 19:20, 20:40, and every Friday 16:40 candle.
-- **app120** – 18:00, 20:00 on non-Sundays, and every Friday 16:00 candle.
-- **app321** – 18:00, 19:00, 20:00.
-
-All IOU scans honour a `limit` plus optional `± tolerance`. A hit survives only if both `|OC|` and `|PrevOC|` exceed `limit + tolerance`.
+1. **CSV okuma:** `Time`, `Open`, `High`, `Low`, `Close (Last)` başlıkları (eş anlamlılar desteklenir) normalize edilir; bozuk satırlar atılır, veri timestamp’e göre sıralanır.
+2. **Timezone normalizasyonu:** Girdi `UTC-5` ise tüm timestamp’ler +60 dk kaydırılarak `UTC-4` bazına alınır.
+3. **Synthetic candles:** app48 her gün (ilk gün hariç) 18:00 ve 18:48 synthetic candle ekler; kapanış penceresi korunur.
+4. **DC hesaplama:** `compute_dc_flags` DC’leri işaretler; ardışık DC engellenir. Pozitif offset adımları non-DC candle’a kaydırılır.
+5. **Sequence hizalama:** `S1` (1,3,7,...) ve `S2` (1,5,9,...) desteklenir. Container rule gerektiğinde DC zaman damgasını kullanır.
+6. **OC / PrevOC:** `OC = Close - Open`; `PrevOC` önceki candle’ın OC değeridir. Tahmini satırlarda `-` gösterilir.
+7. **Offset sistemi:** İlk 18:00 candle baz alınır; offset aralığı `-3..+3`. Eksik veride `pred` saatleri hesaplanır.
 
 ---
 
-## IOV / IOU Signal Engine
+## Distorted Candle (DC) İstisnaları
 
-The CLI and web layers share the same signal pipeline:
-
-1. Load CSV data, normalise timestamps, and apply DC exceptions.
-2. Locate the first 18:00 base candle; adjust positive offsets to the next non-DC candle when needed.
-3. Allocate sequence indices using the container rule whenever an index lands on a DC candle.
-4. Compute `OC` and `PrevOC`, then filter:
-   - **IOV** looks for opposite-signed pairs over the limit threshold.
-   - **IOU** looks for same-signed pairs over `limit + tolerance`.
-5. Render offset-grouped cards with `syn/real` flags and `(rule)` annotations when a value comes from the container rule.
-6. When XYZ filtering is enabled, only offsets with qualifying news or slot overrides remain.
-
-Limits default to positive thresholds; negative user input is converted via absolute value. With `limit = 0`, only non-zero OC values qualify.
+- Temel kural: `High ≤ prev.High`, `Low ≥ prev.Low` ve `Close` önceki candle’ın `[Open, Close]` aralığındaysa candle DC sayılır; ardışık DC engellenir.
+- 18:00 baz candle DC olmaz.
+- **app48:** 13:12–19:36 arası DC sayılmaz (normal kabul); synthetic 18:00 ve 18:48 candle’lar DC değildir.
+- **app72:** 18:00, 19:12, 20:24 ve Cuma 16:00 DC olamaz.
+- **app80:** 18:00, 19:20, 20:40 ve tüm Cuma 16:40 DC olamaz.
+- **app120:** 18:00 ve Cuma 16:00 DC değildir; 20:00 yalnızca Pazar günleri DC değerlendirilebilir (diğer günler hariç tutulur).
+- **app321:** Pazar hariç 20:00 DC olamaz; ayrıca 13:00–20:00 arası (hafta içi) DC’ler normal kabul edilir.
 
 ---
 
-## News Integration
+## IOU Kısıtları
 
-All IOU tabs consume JSON calendars from `economic_calendar/` using `news_loader.py`:
+Her IOU taraması aşağıdaki zamanları doğrudan hariç tutar:
 
-- **Schema** – Recognised fields include `date`, `time`, `time_24h`, `title`, `currency`, `impact`, `all_day`, `recent_null`, `actual`, `forecast`, and `previous`. Missing fields degrade gracefully.
-- **Category mapping**
-  - `holiday` – Title contains “holiday” and the event is all-day with a null actual value.
-  - `all-day` – All-day events that are not holidays (e.g., OPEC meetings, German Prelim CPI).
-  - `speech` – Timed events with a null actual value.
-  - `normal` – Standard data releases.
-- Categories are informational; `holiday` and `all-day` records never cause XYZ filtering to drop a hit.
-- Events tagged `recent_null=true` display with a `(null)` suffix to highlight pending data.
-- app72 safeguards the special slots 16:48, 18:00, 19:12, and 20:24—these offsets survive even if no matching news is found.
+- **app48:** 18:00, 18:48, 19:36
+- **app72:** 18:00, 19:12, 20:24 ve iki haftalık verinin ilk haftası Cuma 16:48
+- **app80:** 18:00, 19:20, 20:40 ve tüm Cuma 16:40
+- **app120:** 18:00, Pazar hariç 20:00 ve tüm Cuma 16:00
+- **app321:** 18:00, 19:00, 20:00
 
-XYZ filtering removes offsets with no effective news or protected slot. Holiday and all-day entries keep the offset but remain clearly labeled.
+IOU filtresi `limit` ve opsiyonel `± tolerance` kullanır; bir satırın sayılabilmesi için hem `|OC|` hem `|PrevOC|` değerlerinin `limit + tolerance` eşiğini aşması gerekir.
 
 ---
 
-## CLI & Web Usage
+## IOV / IOU Sinyal Motoru
+
+CLI ve web katmanları aynı akışı paylaşır:
+
+1. CSV yüklenir, timezone normalize edilir, DC istisnaları uygulanır.
+2. İlk 18:00 baz candle bulunur; pozitif offset’ler gerekirse bir sonraki non-DC candle’a kaydırılır.
+3. Sequence hücreleri container rule ile (gerekirse DC zamanında) hizalanır.
+4. `OC` ve `PrevOC` üzerinden filtre:
+   - IOV: zıt işaretli ikililer + limit kontrolü
+   - IOU: aynı işaretli ikililer + `limit + tolerance` kontrolü
+5. Sonuçlar offset bazlı kartlarda listelenir; `syn/real` ve `(rule)` etiketleri görünür.
+6. XYZ filtresi açıkken yalnızca haberli (veya korunmuş slotlu) offset’ler kalır.
+
+Limitler pozitif varsayılır; negatif girişlerde mutlak değer alınır. `limit=0` ise sadece `OC ≠ 0` satırlar geçer.
+
+---
+
+## Haber Entegrasyonu
+
+Tüm IOU sekmeleri `economic_calendar/` altındaki JSON takvimleri `news_loader.py` ile tüketir:
+
+- **Schema:** `date`, `time`/`time_24h`, `title`, `currency`, `impact`, `all_day`, `recent_null`, `actual`, `forecast`, `previous` alanları desteklenir (eksikler kademeli doldurulur).
+- **Kategori eşlemesi:**
+  - `holiday`: başlıkta “holiday” geçen, all-day ve `actual=null` olan kayıtlar
+  - `all-day`: tatil olmayan tüm gün etkinlikleri (örn. OPEC, German Prelim CPI)
+  - `speech`: saati olan ve `actual=null` olan konuşmalar
+  - `normal`: standart veri açıklamaları
+- `holiday` ve `all-day` sadece bilgilendirme amaçlıdır; XYZ elemesini tetiklemez.
+- `recent_null=true` olan kayıtlar `(null)` ekiyle gösterilir.
+- app72’de 16:48/18:00/19:12/20:24 özel slotları, haber olmasa da korunur.
+
+XYZ filtresi, haber bulunmayan ve slotla korunmayan offset’leri eler; holiday / all-day satırlar kalır ama bilgi etiketiyle gösterilir.
+
+---
+
+## CLI ve Web Kullanımı
 
 Optional virtual environment:
 
@@ -155,7 +155,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Web Interfaces
+### Web Arayüzleri
 
 ```bash
 python3 -m landing.web      --host 0.0.0.0 --port 2000
@@ -168,9 +168,9 @@ python3 -m app321.web       --host 0.0.0.0 --port 2019
 python3 -m calendar_md.web  --host 0.0.0.0 --port 2300
 ```
 
-Each interface supports multi-file upload, configurable IOU limits/tolerance, optional XYZ filtering, and CSV downloads where relevant.
+Tüm arayüzler multi-file upload, IOU `limit/tolerance` alanları ve opsiyonel XYZ filtresi sunar; uygun yerlerde CSV indirme seçenekleri bulunur.
 
-### CLI Examples
+### CLI Örnekleri
 
 ```bash
 # app120 analysis using sequence S2, +1 offset, and DC visibility
@@ -189,31 +189,31 @@ python3 -m app48.main --csv data.csv --predict 49
 python3 -m calendar_md --input calendar.md --output economic_calendar/calendar.json --year 2025
 ```
 
-All CLI tools expose `--help` for full argument listings.
+Tüm CLI araçlarında `--help` ile detaylı argüman listesini görebilirsiniz.
 
 ---
 
-## Sample Datasets
+## Örnek Veri Setleri
 
-Automated fixtures are not bundled. Instead, `ornek/` contains manually curated CSVs representing real-world scenarios for every timeframe. Use them to validate IOU/IOV behaviour, news categories, and tolerance handling. Add your own datasets to the same directory as needed.
-
----
-
-## Deployment Notes
-
-- `render.yaml` and `Procfile` illustrate Render hosting commands.
-- `railway.toml` covers Railway/Nixpacks defaults.
-- `Dockerfile` bootstraps a minimal Python image that can launch the web services.
-- Assign distinct ports per service in production; `appsuite` is the recommended way to serve everything through a single entrypoint.
+Depoda otomatik test verileri yoktur. Bunun yerine `ornek/` klasöründe her timeframe için gerçek-dünya senaryolarını temsil eden CSV’ler bulunur. IOU/IOV davranışı, news kategorileri ve tolerance etkisini doğrulamak için kullanabilirsiniz; kendi dosyalarınızı da buraya ekleyebilirsiniz.
 
 ---
 
-## Developer Tips
+## Dağıtım Notları
 
-- Run `python3 -m compileall .` for a quick syntax check; there is no unittest/pytest harness baked in.
-- Multi-upload IOU tabs are the fastest way to sanity-check new data or tolerance changes.
-- When extending to a new timeframe, treat `app120` as the reference implementation and reuse the shared DC/IOU helpers.
-- Ignore `__pycache__` directories; they should not be committed.
-- Keep calendar JSON feeds fresh. Null actual values drive the `speech` category, and the `all-day + null` combination marks informative all-day events without impacting XYZ filtering.
+- `render.yaml` ve `Procfile` Render barındırma komutlarını örnekler
+- `railway.toml` Railway/Nixpacks varsayılanlarını içerir
+- `Dockerfile` minimal bir Python imajıyla web servislerini başlatır
+- Production’da her servis için farklı port tanımlayın; tek entrypoint için `appsuite` reverse proxy önerilir
 
-As a quick orientation exercise, start `landing.web` or `appsuite.web`, upload the samples under `ornek/`, and inspect the IOU cards. You will see DC exceptions, news labelling, and tolerance thresholds in action within minutes.
+---
+
+## Geliştirici İpuçları
+
+- Hızlı sözdizimi kontrolü için `python3 -m compileall .`; unittest/pytest entegrasyonu yok
+- IOU sekmelerindeki multi-upload, yeni veri veya tolerance değişikliklerini hızlıca doğrulamak için idealdir
+- Yeni timeframe eklerken referans olarak `app120`’yi alın; DC/IOU yardımcılarını yeniden kullanın
+- `__pycache__` klasörlerini sürüme almayın
+- Takvim JSON’larını güncel tutun; `speech` ve `all-day` kategorileri sadece bilgilendirir, XYZ elemesini etkilemez
+
+Hızlı bir başlangıç için `landing.web` veya `appsuite.web`’i açın, `ornek/` altındaki dosyaları yükleyin ve IOU kartlarını inceleyin. Böylece DC istisnaları, news etiketleri ve tolerance eşikleri pratikte görülebilir.
