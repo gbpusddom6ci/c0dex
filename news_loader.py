@@ -124,6 +124,17 @@ def load_news_events() -> List[Dict[str, Any]]:
 
                 has_null_value = _is_null_value(values.get("actual"))
 
+                title_lower = title.lower()
+
+                if has_null_value and is_all_day and "holiday" in title_lower:
+                    category = "holiday"
+                elif has_null_value and is_all_day:
+                    category = "all-day"
+                elif has_null_value and not is_all_day:
+                    category = "speech"
+                else:
+                    category = "normal"
+
                 events.append(
                     {
                         "timestamp": event_ts,
@@ -132,6 +143,7 @@ def load_news_events() -> List[Dict[str, Any]]:
                         "title": title,
                         "has_null_value": has_null_value,
                         "all_day": is_all_day,
+                        "category": category,
                     }
                 )
 

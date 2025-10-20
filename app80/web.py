@@ -3,7 +3,7 @@ import argparse
 import html
 import io
 import csv
-from typing import List, Optional, Dict, Any, Type
+from typing import List, Optional, Dict, Any, Type, Set
 
 from favicon import render_head_links, try_load_asset
 
@@ -518,41 +518,45 @@ class App80Handler(BaseHTTPRequestHandler):
                             news_hits = find_news_for_timestamp(hit.ts, MINUTES_PER_STEP, null_back_minutes=60)
                             detail_lines: List[str] = []
                             has_effective_news = False
-                            has_holiday_news = False
-                            has_all_day_news = False
+                            categories_present: Set[str] = set()
                             for ev in news_hits:
                                 title = ev.get("title", "")
                                 title_html = html.escape(title)
                                 is_all_day = bool(ev.get("all_day"))
                                 if is_all_day:
                                     time_part = "All Day"
-                                    has_all_day_news = True
                                 else:
                                     time_part = html.escape(ev.get("time") or "-")
                                 line = f"{time_part} {title_html}"
                                 if ev.get("window") == "recent-null":
                                     line += " (null)"
-                                is_holiday = "holiday" in title.lower()
-                                if is_holiday:
+                                category = ev.get("category") or "normal"
+                                categories_present.add(category)
+                                if category == "holiday":
                                     line += " (holiday)"
-                                    has_holiday_news = True
-                                else:
-                                    if not is_all_day:
-                                        has_effective_news = True
+                                elif category == "all-day":
+                                    line += " (all-day)"
+                                elif category == "speech":
+                                    line += " (speech)"
+                                if category in {"normal", "speech"}:
+                                    has_effective_news = True
                                 detail_lines.append(line)
                             if detail_lines:
                                 if has_effective_news:
                                     prefix = "Var"
-                                elif has_holiday_news:
+                                elif "holiday" in categories_present:
                                     prefix = "Holiday"
-                                elif has_all_day_news:
+                                elif "all-day" in categories_present:
                                     prefix = "AllDay"
                                 else:
                                     prefix = "Yok"
                                 news_cell_html = prefix + "<br>" + "<br>".join(detail_lines)
                             else:
                                 news_cell_html = "Yok"
-                            info_only_news = has_holiday_news or has_all_day_news
+                            info_only_news = (
+                                not has_effective_news
+                                and any(cat in {"holiday", "all-day"} for cat in categories_present)
+                            )
                             if xyz_enabled and not has_effective_news and not info_only_news:
                                 oc_abs = abs(hit.oc)
                                 prev_abs = abs(hit.prev_oc)
