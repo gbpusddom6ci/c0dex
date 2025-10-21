@@ -19,7 +19,7 @@ _LOCAL_ASSET_META = {
     "/assets/chud.jpeg": (_PHOTO_DIR / "chud.jpeg", "image/jpeg"),
     "/assets/pussy.png": (_PHOTO_DIR / "pussy.png", "image/png"),
     "/assets/penguins.jpg": (_PHOTO_DIR / "penguins.jpg", "image/jpeg"),
-    "/assets/romantizma.png": (_PHOTO_DIR / "romantizma.png", "image/png"),
+    "/assets/umt.jpg": (_PHOTO_DIR / "umt.jpg", "image/jpeg"),
     "/assets/silkroad.jpg": (_PHOTO_DIR / "silkroad.jpg", "image/jpeg"),
     "/assets/suicide.png": (_PHOTO_DIR / "suicide.png", "image/png"),
 }
@@ -37,7 +37,7 @@ _IMAGE_SOURCES = {
     "app80": "/assets/penguins.jpg",
     "app90": "/assets/chud.jpeg",
     "app96": "/assets/pussy.png",
-    "app120": "/assets/romantizma.png",
+    "app120": "/assets/umt.jpg",
     "app321": "/assets/silkroad.jpg",
     "calendar_md": "/assets/suicide.png",
 }
