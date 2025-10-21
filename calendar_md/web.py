@@ -4,9 +4,12 @@ import argparse
 import html
 import io
 import json
-from cgi import FieldStorage
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from dataclasses import dataclass
+from email.parser import BytesParser
+from email.policy import default as email_default
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import parse_qs
 from zipfile import ZipFile, ZIP_DEFLATED
 
 from favicon import render_head_links, try_load_asset
@@ -136,28 +139,58 @@ def render_form(
     return html_doc.encode("utf-8")
 
 
-def parse_form(body: bytes, content_type: str, headers) -> Tuple[Dict[str, str], Dict[str, List[FieldStorage]]]:
-    environ = {
-        'REQUEST_METHOD': 'POST',
-        'CONTENT_TYPE': content_type,
-        'CONTENT_LENGTH': str(len(body)),
-    }
-    form = FieldStorage(
-        fp=io.BytesIO(body),
-        headers=headers,
-        environ=environ,
-        keep_blank_values=True,
-    )
-    field_values: Dict[str, List[str]] = {}
-    file_values: Dict[str, List[FieldStorage]] = {}
-    if form.list:
-        for item in form.list:
-            if item.filename:
-                file_values.setdefault(item.name, []).append(item)
-            else:
-                field_values.setdefault(item.name, []).append(item.value)
-    flat_fields = {k: v[-1] for k, v in field_values.items()}
-    return flat_fields, file_values
+@dataclass
+class UploadedFile:
+    filename: str
+    content: bytes
+    content_type: str = "application/octet-stream"
+
+
+def _decode_text(payload: bytes, charset: Optional[str]) -> str:
+    encoding = charset or "utf-8"
+    try:
+        return payload.decode(encoding)
+    except Exception:  # noqa: BLE001
+        return payload.decode("utf-8", errors="replace")
+
+
+def parse_form(body: bytes, content_type: str, headers) -> Tuple[Dict[str, str], Dict[str, List[UploadedFile]]]:
+    if not content_type:
+        return {}, {}
+    lower_ctype = content_type.lower()
+    if "multipart/form-data" in lower_ctype:
+        parser = BytesParser(policy=email_default)
+        message = parser.parsebytes(b"Content-Type: " + content_type.encode("utf-8") + b"\n\n" + body)
+        fields_multi: Dict[str, List[str]] = {}
+        files_multi: Dict[str, List[UploadedFile]] = {}
+        if message.is_multipart():
+            for part in message.iter_parts():
+                disposition = part.get("Content-Disposition", "")
+                if "form-data" not in disposition:
+                    continue
+                params = dict(part.get_params(header="content-disposition", unquote=True))
+                name = params.get("name")
+                if not name:
+                    continue
+                payload = part.get_payload(decode=True) or b""
+                filename = params.get("filename")
+                if filename:
+                    files_multi.setdefault(name, []).append(
+                        UploadedFile(filename=filename, content=payload, content_type=part.get_content_type())
+                    )
+                else:
+                    charset = part.get_content_charset()
+                    fields_multi.setdefault(name, []).append(_decode_text(payload, charset))
+        flat_fields = {k: v[-1] for k, v in fields_multi.items()}
+        return flat_fields, files_multi
+
+    if "application/x-www-form-urlencoded" in lower_ctype:
+        text = body.decode("utf-8", errors="replace")
+        parsed = parse_qs(text, keep_blank_values=True)
+        flat_fields = {k: v[-1] for k, v in parsed.items()}
+        return flat_fields, {}
+
+    return {}, {}
 
 def _sanitize_filename(name: str) -> str:
     cleaned = "".join(ch for ch in name if ch.isalnum() or ch in ("-", "_", "."))
@@ -226,11 +259,7 @@ class CalendarHandler(BaseHTTPRequestHandler):
         try:
             if file_items:
                 for file_item in file_items:
-                    try:
-                        file_item.file.seek(0)
-                    except Exception:  # noqa: BLE001
-                        pass
-                    content = file_item.file.read().decode("utf-8", errors="replace")
+                    content = file_item.content.decode("utf-8", errors="replace")
                     days = parse_calendar_markdown(content, year=year)
                     document = to_json_document(
                         days,
