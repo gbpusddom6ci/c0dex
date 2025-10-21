@@ -71,9 +71,9 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
         url = meta.get("url", "#")
         title = meta.get("title", key)
         planets.append(
-            f"<a class='{classes}' href='{html.escape(url)}' target='_blank' rel='noopener noreferrer'>"
+            f"<a class='{classes}' href='{html.escape(url)}' target='_blank' rel='noopener noreferrer' aria-label='{html.escape(title)}' data-title='{html.escape(title)}'>"
             f"<img src='{src}' alt='{html.escape(title)}'>"
-            "</a>"
+            f"<span class='label'>{html.escape(title)}</span></a>"
         )
 
     head_links = render_head_links("    ")
@@ -81,77 +81,131 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
 <html lang='tr'>
   <head>
     <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1'>
     {head_links}
     <title>malw.ooo</title>
     <style>
-      html, body {{
+      :root {
+        --retro-bg: #000000;
+        --retro-text: #ff0000;
+        --retro-link: #ff4c4c;
+      }
+      html, body {
         margin: 0;
         padding: 0;
         min-height: 100%;
         font-family: "Comic Sans MS", "Arial", sans-serif;
-        color: #ff0000;
-      }}
-      body {{
-        display: flex;
-        justify-content: center;
-        align-items: center;
-      }}
-      .portal {{
-        position: relative;
-        width: 540px;
-        height: 540px;
-        margin: 60px auto;
-      }}
-      .portal img {{
-        border: 0;
-      }}
-      .portal .logo {{
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 165px;
-        max-width: 40%;
-        transform: translate(-50%, -50%);
-        box-shadow: 0 0 25px rgba(255, 255, 255, 0.25);
-      }}
-      .planet {{
-        position: absolute;
-        width: 130px;
-        transform: translate(-50%, -50%);
-      }}
-      .planet img {{
+        color: var(--retro-text);
+      }
+      a:link { color: var(--retro-link); }
+      a:visited { color: var(--retro-link); }
+      a:active { color: var(--retro-link); }
+      a:hover { filter: brightness(1.1); }
+      a:focus-visible {
+        outline: 3px dashed #ffea00;
+        outline-offset: 3px;
+        border-radius: 10px;
+      }
+      body {
+        background-color: var(--retro-bg);
+        background-image: url('/assets/bg_stars.gif');
+        background-repeat: repeat;
+        background-attachment: fixed;
         display: block;
-        width: 100%;
+      }
+      /* Mobile-first layout */
+      .portal {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        width: min(560px, calc(100% - 32px));
+        margin: 24px auto;
+      }
+      .portal img { border: 0; }
+      .portal .logo {
+        position: static;
+        display: block;
+        width: 150px;
+        max-width: 60%;
+        margin: 16px auto 8px;
+        transform: none;
+        box-shadow: 0 0 25px rgba(255, 255, 255, 0.25);
+      }
+      .planet {
+        position: static;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        min-height: 56px;
+        border-radius: 10px;
+        border: 1px dotted rgba(255,255,255,0.25);
+        background: rgba(10,10,10,0.55);
+        text-decoration: none;
+        transform: none;
+        width: auto;
+      }
+      .planet img {
+        display: block;
+        width: clamp(40px, 10vw, 64px);
         height: auto;
-      }}
-      .planet--app48 {{ top: 6%; left: 50%; }}
-      .planet--app72 {{ top: 24%; left: 90%; }}
-      .planet--app80 {{ top: 70%; left: 92%; }}
-      .planet--app120 {{ top: 92%; left: 52%; }}
-      .planet--app321 {{ top: 70%; left: 10%; }}
-      .planet--calendar {{ top: 24%; left: 12%; }}
-      @media (max-width: 640px) {{
-        body {{ padding: 40px 0; }}
-        .portal {{
-          width: 320px;
-          height: 480px;
-        }}
-        .portal .logo {{
-          width: 150px;
-        }}
-        .planet {{
-          width: 90px;
-        }}
-        .planet--app48 {{ top: 8%; left: 50%; }}
-        .planet--app72 {{ top: 28%; left: 90%; }}
-        .planet--app80 {{ top: 72%; left: 92%; }}
-        .planet--app120 {{ top: 94%; left: 52%; }}
-        .planet--app321 {{ top: 72%; left: 10%; }}
-        .planet--calendar {{ top: 28%; left: 12%; }}
-      }}
+      }
+      .planet .label {
+        font-size: 16px;
+        line-height: 1.2;
+        text-shadow: 0 1px 0 rgba(0,0,0,0.8);
+      }
+      /* Tablet: two-column */
+      @media (min-width: 480px) and (max-width: 767.98px) {
+        .portal {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+          width: min(760px, calc(100% - 32px));
+        }
+        .portal .logo { grid-column: 1 / -1; justify-self: center; }
+        .planet img { width: clamp(48px, 8vw, 72px); }
+      }
+      /* Desktop: restore original orbital layout */
+      @media (min-width: 768px) {
+        body { display: flex; justify-content: center; align-items: center; }
+        .portal {
+          position: relative;
+          width: 540px;
+          height: 540px;
+          margin: 60px auto;
+          display: block;
+        }
+        .portal .logo {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 165px;
+          max-width: 40%;
+          transform: translate(-50%, -50%);
+        }
+        .planet {
+          position: absolute;
+          width: 130px;
+          padding: 0;
+          background: transparent;
+          border: none;
+          transform: translate(-50%, -50%);
+        }
+        .planet .label { display: none; }
+        .planet img { width: 100%; height: auto; }
+        .planet--app48 { top: 6%; left: 50%; }
+        .planet--app72 { top: 24%; left: 90%; }
+        .planet--app80 { top: 70%; left: 92%; }
+        .planet--app120 { top: 92%; left: 52%; }
+        .planet--app321 { top: 70%; left: 10%; }
+        .planet--calendar { top: 24%; left: 12%; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * { animation: none !important; transition: none !important; }
+      }
     </style>
   </head>
-  <body bgcolor='#000000' background='/assets/bg_stars.gif' text='#ff0000' link='#ff4c4c' vlink='#ff4c4c' alink='#ff4c4c'>
+  <body>
     <center>
       <div class='portal'>
         <img class='logo' src='{_IMAGE_SOURCES["logo"]}' alt='malw.ooo'>
