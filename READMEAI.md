@@ -1,6 +1,6 @@
 # C0dex Çoklu Timeframe Analiz Paketi
 
-Bu depo; **app48**, **app72**, **app80**, **app120** ve **app321** olmak üzere beş farklı timeframe uygulamasını ve ortak araçları bir araya getirir. Her uygulama CSV verisini okur, zaman damgalarını normalize eder, distorted candle (DC) işaretler, sequence ve offset hizalamalarını kurar ve hem CLI hem de hafif web arayüzleri üzerinden IOU/IOV signal scan sonuçlarını sunar.
+Bu depo; **app48**, **app72**, **app80**, **app96**, **app120** ve **app321** olmak üzere altı farklı timeframe uygulamasını ve ortak araçları bir araya getirir. Her uygulama CSV verisini okur, zaman damgalarını normalize eder, distorted candle (DC) işaretler, sequence ve offset hizalamalarını kurar ve hem CLI hem de hafif web arayüzleri üzerinden IOU/IOV signal scan sonuçlarını sunar.
 
 Destekleyici paketler: `appsuite` tüm uygulamaları tek host altında bir reverse proxy ile sunar, `landing` basit bir giriş sayfası sağlar, `calendar_md` Markdown ekonomik takvimlerini JSON’a çevirir, `favicon` ortak varlıkları barındırır. Amaç; bu repo dışına çıkmadan sistemi anlamak ve çalıştırmak için gereken her şeyi tek yerde toplamaktır.
 
@@ -38,6 +38,7 @@ Destekleyici paketler: `appsuite` tüm uygulamaları tek host altında bir rever
 app48/      48 dakikalık analiz paketi (CLI + web)
 app72/      72 dakikalık analiz paketi
 app80/      80 dakikalık analiz paketi
+app96/      96 dakikalık analiz paketi
 app120/     120 dakikalık analiz paketi
 app321/     60 dakikalık analiz paketi
 appsuite/   Reverse proxy ve birleşik arayüz
@@ -63,6 +64,7 @@ Her timeframe klasörü benzer bir kalıbı izler:
 | app48    | 48 dk     | 2020 | 12→48     | Synthetic 18:00 & 18:48; 18:00/18:48/19:36 DC & IOU dışında |
 | app72    | 72 dk     | 2172 | 12→72     | 18:00, 19:12, 20:24 DC olamaz; ilk haftanın Cuma 16:48 IOU dışında |
 | app80    | 80 dk     | 2180 | 20→80     | 18:00, 19:20, 20:40 ve tüm Cuma 16:40 DC & IOU dışında |
+| app96    | 96 dk     | 2196 | 12→96     | Genel kural: 18:00 DC/IOU dışında; özel istisnalar ileride tanımlanacak |
 | app120   | 120 dk    | 2120 | 60→120    | 18:00 DC & IOU dışında; Pazar hariç 20:00 ve tüm Cuma 16:00 hariç |
 | app321   | 60 dk     | 2019 | —         | Pazar dışı 20:00 DC olamaz; 18:00/19:00/20:00 IOU dışında |
 | appsuite | —         | 2100 | —         | Tüm uygulamalar reverse proxy arkasında |
@@ -91,6 +93,7 @@ Tüm web arayüzleri multi-file CSV upload destekler; IOU/IOV sekmeleri ve dosya
 - **app48:** 13:12–19:36 arası DC sayılmaz (normal kabul); synthetic 18:00 ve 18:48 candle’lar DC değildir.
 - **app72:** 18:00, 19:12, 20:24 ve Cuma 16:00 DC olamaz.
 - **app80:** 18:00, 19:20, 20:40 ve tüm Cuma 16:40 DC olamaz.
+- **app96:** Şimdilik yalnızca genel kural uygulanır (18:00 DC değildir).
 - **app120:** 18:00 ve Cuma 16:00 DC değildir; 20:00 yalnızca Pazar günleri DC değerlendirilebilir (diğer günler hariç tutulur).
 - **app321:** Pazar hariç 20:00 DC olamaz; ayrıca 13:00–20:00 arası (hafta içi) DC’ler normal kabul edilir.
 
@@ -103,6 +106,7 @@ Her IOU taraması aşağıdaki zamanları doğrudan hariç tutar:
 - **app48:** 18:00, 18:48, 19:36
 - **app72:** 18:00, 19:12, 20:24 ve iki haftalık verinin ilk haftası Cuma 16:48
 - **app80:** 18:00, 19:20, 20:40 ve tüm Cuma 16:40
+- **app96:** 18:00 (şimdilik genel kural)
 - **app120:** 18:00, Pazar hariç 20:00 ve tüm Cuma 16:00
 - **app321:** 18:00, 19:00, 20:00
 
@@ -163,6 +167,7 @@ python3 -m appsuite.web     --host 0.0.0.0 --port 2100
 python3 -m app48.web        --host 0.0.0.0 --port 2020
 python3 -m app72.web        --host 0.0.0.0 --port 2172
 python3 -m app80.web        --host 0.0.0.0 --port 2180
+python3 -m app96.web        --host 0.0.0.0 --port 2196
 python3 -m app120.web       --host 0.0.0.0 --port 2120
 python3 -m app321.web       --host 0.0.0.0 --port 2019
 python3 -m calendar_md.web  --host 0.0.0.0 --port 2300
@@ -181,6 +186,9 @@ python3 -m app120 --csv 60m.csv --input-tz UTC-5 --output 120m.csv
 
 # app80 IOU scan with custom thresholds
 python3 -m app80.counter --csv data.csv --sequence S1 --scan-iou --limit 0.08 --tolerance 0.005
+
+# app96 temel IOU taraması
+python3 -m app96.counter --csv data.csv --sequence S2 --offset 0 --show-dc
 
 # app48 prediction mode
 python3 -m app48.main --csv data.csv --predict 49

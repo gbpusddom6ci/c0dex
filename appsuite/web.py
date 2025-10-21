@@ -15,6 +15,7 @@ from landing.web import build_html, try_load_local_asset
 from app48.web import run as run_app48
 from app72.web import run as run_app72
 from app80.web import run as run_app80
+from app96.web import run as run_app96
 from app120.web import run as run_app120
 from app321.web import run as run_app321
 from calendar_md.web import run as run_calendar
@@ -216,6 +217,7 @@ def run(
     app48_port: int,
     app72_port: int,
     app80_port: int,
+    app96_port: int,
     app120_port: int,
     app321_port: int,
     calendar_port: int,
@@ -224,6 +226,7 @@ def run(
         Backend(name="app48", title="app48", host=backend_host, port=app48_port, prefix="/app48", description="48 dakikalık mum sayımı ve dönüştürücü"),
         Backend(name="app72", title="app72", host=backend_host, port=app72_port, prefix="/app72", description="72 dakikalık sayım ve 12→72 dönüştürücü (7x12m)"),
         Backend(name="app80", title="app80", host=backend_host, port=app80_port, prefix="/app80", description="80 dakikalık sayım ve 20→80 dönüştürücü (4x20m)"),
+        Backend(name="app96", title="app96", host=backend_host, port=app96_port, prefix="/app96", description="96 dakikalık sayım ve 12→96 dönüştürücü (8x12m)"),
         Backend(name="app120", title="app120", host=backend_host, port=app120_port, prefix="/app120", description="120 dakikalık analiz ve dönüştürücü"),
         Backend(name="app321", title="app321", host=backend_host, port=app321_port, prefix="/app321", description="60 dakikalık sayım araçları"),
         Backend(name="calendar_md", title="Takvim Dönüştürücü", host=backend_host, port=calendar_port, prefix="/calendar", description="Takvim markdown → JSON dönüştürücü"),
@@ -232,6 +235,7 @@ def run(
     start_backend_thread("app48", run_app48, backend_host, app48_port)
     start_backend_thread("app72", run_app72, backend_host, app72_port)
     start_backend_thread("app80", run_app80, backend_host, app80_port)
+    start_backend_thread("app96", run_app96, backend_host, app96_port)
     start_backend_thread("app120", run_app120, backend_host, app120_port)
     start_backend_thread("app321", run_app321, backend_host, app321_port)
     start_backend_thread("calendar", run_calendar, backend_host, calendar_port)
@@ -260,6 +264,7 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--app48-port", type=int, default=9200, help="app48 iç portu")
     parser.add_argument("--app72-port", type=int, default=9201, help="app72 iç portu")
     parser.add_argument("--app80-port", type=int, default=9202, help="app80 iç portu")
+    parser.add_argument("--app96-port", type=int, default=9206, help="app96 iç portu")
     parser.add_argument("--app120-port", type=int, default=9203, help="app120 iç portu")
     parser.add_argument("--app321-port", type=int, default=9204, help="app321 iç portu")
     parser.add_argument("--calendar-port", type=int, default=9205, help="Takvim dönüştürücü iç portu")
@@ -272,6 +277,7 @@ def main(argv: List[str] | None = None) -> int:
         args.app48_port,
         args.app72_port,
         args.app80_port,
+        args.app96_port,
         args.app120_port,
         args.app321_port,
         args.calendar_port,

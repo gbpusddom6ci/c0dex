@@ -16,6 +16,7 @@ _LOCAL_ASSET_META = {
     "/assets/lobotomy.jpg": (_PHOTO_DIR / "lobotomy.jpg", "image/jpeg"),
     "/assets/kan.jpeg": (_PHOTO_DIR / "kan.jpeg", "image/jpeg"),
     "/assets/kits.jpg": (_PHOTO_DIR / "kits.jpg", "image/jpeg"),
+    "/assets/pussy.png": (_PHOTO_DIR / "pussy.png", "image/png"),
     "/assets/penguins.jpg": (_PHOTO_DIR / "penguins.jpg", "image/jpeg"),
     "/assets/romantizma.png": (_PHOTO_DIR / "romantizma.png", "image/png"),
     "/assets/silkroad.jpg": (_PHOTO_DIR / "silkroad.jpg", "image/jpeg"),
@@ -32,6 +33,7 @@ _IMAGE_SOURCES = {
     "logo": "/assets/lobotomy.jpg",
     "app48": "/assets/kan.jpeg",
     "app72": "/assets/kits.jpg",
+    "app96": "/assets/pussy.png",
     "app80": "/assets/penguins.jpg",
     "app120": "/assets/romantizma.png",
     "app321": "/assets/silkroad.jpg",
@@ -42,6 +44,7 @@ _PLANET_LAYOUT = [
     ("app48", "planet planet--app48"),
     ("app72", "planet planet--app72"),
     ("app80", "planet planet--app80"),
+    ("app96", "planet planet--app96"),
     ("app120", "planet planet--app120"),
     ("app321", "planet planet--app321"),
     ("calendar_md", "planet planet--calendar"),
@@ -126,7 +129,8 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
       }}
       .planet--app48 {{ top: 6%; left: 50%; }}
       .planet--app72 {{ top: 24%; left: 90%; }}
-      .planet--app80 {{ top: 70%; left: 92%; }}
+      .planet--app80 {{ top: 78%; left: 92%; }}
+      .planet--app96 {{ top: 51%; left: 86%; margin-left: 65px; }}
       .planet--app120 {{ top: 92%; left: 52%; }}
       .planet--app321 {{ top: 70%; left: 10%; }}
       .planet--calendar {{ top: 24%; left: 12%; }}
@@ -144,7 +148,8 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
         }}
         .planet--app48 {{ top: 8%; left: 50%; }}
         .planet--app72 {{ top: 28%; left: 90%; }}
-        .planet--app80 {{ top: 72%; left: 92%; }}
+        .planet--app80 {{ top: 80%; left: 92%; }}
+        .planet--app96 {{ top: 53%; left: 86%; margin-left: 0px; }}
         .planet--app120 {{ top: 94%; left: 52%; }}
         .planet--app321 {{ top: 72%; left: 10%; }}
         .planet--calendar {{ top: 28%; left: 12%; }}
@@ -246,6 +251,11 @@ def main(argv: list[str] | None = None) -> int:
         help="app80 web arayüzü için URL",
     )
     parser.add_argument(
+        "--app96-url",
+        default="http://127.0.0.1:2196/",
+        help="app96 web arayüzü için URL",
+    )
+    parser.add_argument(
         "--app120-url",
         default="http://127.0.0.1:2120/",
         help="app120 web arayüzü için URL",
@@ -261,6 +271,7 @@ def main(argv: list[str] | None = None) -> int:
         "app48": {"title": "app48", "url": args.app48_url},
         "app72": {"title": "app72", "url": args.app72_url},
         "app80": {"title": "app80", "url": args.app80_url},
+        "app96": {"title": "app96", "url": args.app96_url},
         "app120": {"title": "app120", "url": args.app120_url},
         "app321": {"title": "app321", "url": args.app321_url},
         "calendar_md": {"title": "Takvim Dönüştürücü", "url": args.calendar_url},
