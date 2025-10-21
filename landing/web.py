@@ -129,7 +129,7 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
       }}
       .planet--app48 {{ top: 6%; left: 50%; }}
       .planet--app72 {{ top: 24%; left: 90%; }}
-      .planet--app80 {{ top: 72%; left: 92%; }}
+      .planet--app80 {{ top: 74%; left: 92%; }}
       .planet--app96 {{ top: 51%; left: 86%; }}
       .planet--app120 {{ top: 92%; left: 52%; }}
       .planet--app321 {{ top: 70%; left: 10%; }}
@@ -148,7 +148,7 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
         }}
         .planet--app48 {{ top: 8%; left: 50%; }}
         .planet--app72 {{ top: 28%; left: 90%; }}
-        .planet--app80 {{ top: 74%; left: 92%; }}
+        .planet--app80 {{ top: 76%; left: 92%; }}
         .planet--app96 {{ top: 53%; left: 86%; }}
         .planet--app120 {{ top: 94%; left: 52%; }}
         .planet--app321 {{ top: 72%; left: 10%; }}
