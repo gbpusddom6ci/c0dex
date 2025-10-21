@@ -133,11 +133,11 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
       .planet--app48 {{ top: 6%; left: 50%; }}
       .planet--app72 {{ top: 24%; left: 90%; }}
       .planet--app80 {{ top: 78%; left: 92%; }}
-      .planet--app90 {{ top: 46%; left: 20%; }}
+      .planet--app90 {{ top: 46%; left: 20%; margin-left: -100px; }}
       .planet--app96 {{ top: 51%; left: 86%; margin-left: 65px; }}
       .planet--app120 {{ top: 92%; left: 52%; }}
-      .planet--app321 {{ top: 70%; left: 10%; }}
-      .planet--calendar {{ top: 24%; left: 12%; }}
+      .planet--app321 {{ top: 70%; left: 10%; margin-top: 40px; }}
+      .planet--calendar {{ top: 24%; left: 12%; margin-top: -25px; }}
       @media (max-width: 640px) {{
         body {{ padding: 40px 0; }}
         .portal {{
@@ -153,11 +153,11 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
         .planet--app48 {{ top: 8%; left: 50%; }}
         .planet--app72 {{ top: 28%; left: 90%; }}
         .planet--app80 {{ top: 80%; left: 92%; }}
-        .planet--app90 {{ top: 50%; left: 24%; }}
+        .planet--app90 {{ top: 50%; left: 24%; margin-left: -100px; }}
         .planet--app96 {{ top: 53%; left: 86%; margin-left: 0px; }}
         .planet--app120 {{ top: 94%; left: 52%; }}
-        .planet--app321 {{ top: 72%; left: 10%; }}
-        .planet--calendar {{ top: 28%; left: 12%; }}
+        .planet--app321 {{ top: 72%; left: 10%; margin-top: 40px; }}
+        .planet--calendar {{ top: 28%; left: 12%; margin-top: -25px; }}
       }}
     </style>
   </head>
