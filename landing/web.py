@@ -15,7 +15,7 @@ _LOCAL_ASSET_META = {
     "/assets/bg_stars.gif": (_BASE_DIR / "bg_stars.gif", "image/gif"),
     "/assets/lobotomy.jpg": (_PHOTO_DIR / "lobotomy.jpg", "image/jpeg"),
     "/assets/kan.jpeg": (_PHOTO_DIR / "kan.jpeg", "image/jpeg"),
-    "/assets/kits.jpg": (_PHOTO_DIR / "kits.jpg", "image/jpeg"),
+    "/assets/ICT.jpg": (_PHOTO_DIR / "ICT.jpg", "image/jpeg"),
     "/assets/chud.jpeg": (_PHOTO_DIR / "chud.jpeg", "image/jpeg"),
     "/assets/pussy.png": (_PHOTO_DIR / "pussy.png", "image/png"),
     "/assets/penguins.jpg": (_PHOTO_DIR / "penguins.jpg", "image/jpeg"),
@@ -33,7 +33,7 @@ for route, (fs_path, content_type) in _LOCAL_ASSET_META.items():
 _IMAGE_SOURCES = {
     "logo": "/assets/lobotomy.jpg",
     "app48": "/assets/kan.jpeg",
-    "app72": "/assets/kits.jpg",
+    "app72": "/assets/ICT.jpg",
     "app80": "/assets/penguins.jpg",
     "app90": "/assets/chud.jpeg",
     "app96": "/assets/pussy.png",
