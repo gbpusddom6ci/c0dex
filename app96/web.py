@@ -503,7 +503,10 @@ class App96Handler(BaseHTTPRequestHandler):
                             status_label += f" (missing {item.missing_steps})"
                         offset_statuses.append(status_label)
 
-                        display_count = 0
+                        hit_count = len(item.hits)
+                        offset_counts.append(f"{off_label}: {hit_count}")
+                        total_hits += hit_count
+
                         for hit in item.hits:
                             ts_s = hit.ts.strftime('%Y-%m-%d %H:%M:%S')
                             oc_label = format_pip(hit.oc)
@@ -553,8 +556,6 @@ class App96Handler(BaseHTTPRequestHandler):
                                 not has_effective_news
                                 and any(cat in {"holiday", "all-day"} for cat in categories_present)
                             )
-                            if xyz_enabled and info_only_news:
-                                continue
                             if xyz_enabled and not has_effective_news and not info_only_news:
                                 oc_abs = abs(hit.oc)
                                 prev_abs = abs(hit.prev_oc)
@@ -567,15 +568,12 @@ class App96Handler(BaseHTTPRequestHandler):
                                         bucket = offset_eliminations.setdefault(item.offset, [])
                                         if elim_label not in bucket:
                                             bucket.append(elim_label)
-                            display_count += 1
                             rows.append(
                                 f"<tr><td>{off_label}</td><td>{hit.seq_value}</td><td>{hit.idx}</td>"
                                 f"<td>{html.escape(ts_s)}</td><td>{html.escape(oc_label)}</td>"
                                 f"<td>{html.escape(prev_label)}</td><td>{dc_info}</td>"
                                 f"<td>{news_cell_html}</td></tr>"
                             )
-                        offset_counts.append(f"{off_label}: {display_count}")
-                        total_hits += display_count
 
                     base_offsets = [-3, -2, -1, 0, 1, 2, 3]
                     xyz_offsets = [o for o in base_offsets if not offset_has_non_news.get(o, False)] if xyz_enabled else base_offsets
