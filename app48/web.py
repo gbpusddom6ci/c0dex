@@ -581,11 +581,7 @@ class AppHandler(BaseHTTPRequestHandler):
                                 news_cell_html = prefix + "<br>" + "<br>".join(detail_lines)
                             else:
                                 news_cell_html = "Yok"
-                            info_only_news = (
-                                not has_effective_news
-                                and any(cat in {"holiday", "all-day"} for cat in categories_present)
-                            )
-                            if xyz_enabled and not has_effective_news and not info_only_news:
+                            if xyz_enabled and not has_effective_news:
                                 oc_abs = abs(hit.oc)
                                 prev_abs = abs(hit.prev_oc)
                                 if oc_abs > limit_margin or prev_abs > limit_margin:

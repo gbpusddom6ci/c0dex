@@ -24,7 +24,7 @@
 - Limit alanına girilen değer mutlak alınır; tolerans ile birlikte değerlendirilir.
 - Sonuçların görünmesi için hem `|OC|` hem de `|PrevOC|` değerlerinin `limit + tolerans` eşiğini aşması gerekir. Varsayılan tolerans 0.005’tir ancak form alanından değiştirilebilir.
 - Birden fazla CSV aynı anda yüklenebilir; her dosya için sequence, limit, tolerans ve timezone parametreleri ortak kullanılır. Sonuçlar dosya başına kartlarda gösterilir.
-- XYZ filtresi aktifken haber taşımayan offsetler elenir. Haber tablosu `Var`, `Holiday` veya `Yok` etiketleriyle gösterilir.
+- XYZ filtresi aktifken haber taşımayan offsetler elenir. Haber tablosu `Var`, `Holiday` veya `Yok` etiketleriyle gösterilir; `Holiday` satırları yalnızca bilgi verir ve offseti kümenin dışına iter.
 
 ## Matrix ve Analiz Sekmeleri
 - Analiz sekmesi sequence indekslerine göre zaman damgalarını, DC durumunu, OC/PrevOC değerlerini ve tahmini slotları listeler.

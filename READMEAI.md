@@ -145,11 +145,11 @@ Tüm IOU sekmeleri `economic_calendar/` altındaki JSON takvimleri `news_loader.
   - `all-day`: tatil olmayan tüm gün etkinlikleri (örn. OPEC, German Prelim CPI)
   - `speech`: saati olan ve `actual=null` olan konuşmalar
   - `normal`: standart veri açıklamaları
-- `holiday` ve `all-day` sadece bilgilendirme amaçlıdır; XYZ elemesini tetiklemez.
+- `holiday` ve `all-day` yalnız bilgilendirme amaçlıdır; XYZ filtresi bu kayıtları haber kabul etmez ve bu kategorileri içeren hit’ler offseti kümenin dışına iter.
 - `recent_null=true` olan kayıtlar `(null)` ekiyle gösterilir.
 - app72’de 16:48/18:00/19:12/20:24 özel slotları, haber olmasa da korunur.
 
-XYZ filtresi, haber bulunmayan ve slotla korunmayan offset’leri eler; holiday / all-day satırlar kalır ama bilgi etiketiyle gösterilir.
+XYZ filtresi, haber bulunmayan (ve slotla korunmayan) offset’leri eler; holiday / all-day satırlar yalnızca bilgi olarak görünür ve offset’i filtre dışına çıkarır.
 
 ---
 

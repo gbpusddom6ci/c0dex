@@ -29,7 +29,7 @@
 - Limit alanı mutlak alınır; hem `|OC|` hem `|PrevOC|` `limit + tolerans` eşiğini aşmadıkça satırlar listelenmez.
 - Varsayılan tolerans 0.005’tir; form alanı üzerinden değiştirilebilir.
 - Sonuçlar sentetik (`syn`) veya gerçek (`real`) etiketleriyle kartlarda gösterilir.
-- XYZ filtresi aktifken haber taşımayan offsetler elenir; tatil satırları bilgi amaçlı listelenir.
+- XYZ filtresi aktifken haber taşımayan offsetler elenir; tatil satırları yalnızca bilgilendirme amaçlıdır ve bu tür kayıtlar offsetin XYZ kümesinden çıkmasına neden olur.
 - 18:00, 18:48 ve 19:36 zaman damgalarına sahip hiç bir mum IOU olarak raporlanmaz.
 
 ## Analiz ve Matrix Sekmeleri

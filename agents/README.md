@@ -87,9 +87,9 @@ Her timeframe paketinde tipik olarak:
 ## Haber Akışı & XYZ Filtresi
 - IOU formlarında “XYZ kümesi (haber filtreli)” kutucuğu etkinleştirildiğinde haber taşımayan offsetler elenir.
 - `news_loader.py` JSON takvimleri farklı alanlardan (örn. `time_24h`, `time_text`) okuyup normalize eder.
-- Tatil başlığı içeren olaylar `effective_news=False`; offset yalnızca bilgi amaçlı listelenir.
-- All-day olaylar zaman etiketi olmadan gün bazında yakalanır, günlük not olarak görünür.
-- app72’nin 16:48/18:00/19:12/20:24 slotları haber olmasa da “Kural slot HH:MM” notuyla korunur.
+- Tatil başlığı içeren olaylar `effective_news=False`; bilgi olarak gösterilir fakat haber sayılmadıkları için bulundukları offsetler XYZ kümesinin dışında kalır.
+- All-day olaylar zaman etiketi olmadan gün bazında yakalanır; etkili haber sayılmadıklarından (slot koruması yoksa) offsetleri elerler.
+- app72’nin 16:48/18:00/19:12/20:24 slotları haber yoksa “Kural slot HH:MM” notuyla korunur; tatil/all-day kayıtları geldiğinde bu slotlar da filtre dışına çıkar.
 - Tolerans kuralları XYZ filtreyle birlikte uygulanır; limit altındaki satırlar ve tolerans içinde kalan değerler listeye girmeden elenir.
 
 ## Web Katmanı ve Yardımcı Servisler
