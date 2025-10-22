@@ -22,6 +22,8 @@ from app321.web import run as run_app321
 from calendar_md.web import run as run_calendar
 from favicon import try_load_asset
 
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+
 
 @dataclass(frozen=True)
 class Backend:
@@ -105,10 +107,18 @@ def strip_hop_headers(headers: Iterable[Tuple[str, str]]) -> List[Tuple[str, str
 def make_handler(backends: List[Backend], landing_bytes: bytes):
     class UnifiedHandler(BaseHTTPRequestHandler):
         server_version = "CandlesUnified/1.0"
+        sys_version = ""
+
+        def _add_security_headers(self) -> None:
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
 
         def _serve_landing(self) -> None:
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self._add_security_headers()
             self.send_header("Content-Length", str(len(landing_bytes)))
             self.end_headers()
             self.wfile.write(landing_bytes)
@@ -117,6 +127,7 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
             payload = b"ok"
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self._add_security_headers()
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
@@ -127,6 +138,7 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
                 payload, content_type = local_asset
                 self.send_response(200)
                 self.send_header("Content-Type", content_type)
+                self._add_security_headers()
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
                 self.wfile.write(payload)
@@ -164,6 +176,15 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
 
         def _proxy(self, backend: Backend, sub_path: str) -> None:
             content_length = int(self.headers.get("Content-Length", "0") or 0)
+            if content_length > MAX_UPLOAD_BYTES:
+                msg = b"Upload too large (max 50 MB)."
+                self.send_response(413)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self._add_security_headers()
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                self.wfile.write(msg)
+                return
             body = self.rfile.read(content_length) if content_length > 0 else None
 
             headers = {k: v for k, v in self.headers.items()}
@@ -192,6 +213,8 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
                     if header.lower() == "content-length":
                         continue
                     self.send_header(header, value)
+                # add our security headers on top of proxied response
+                self._add_security_headers()
                 self.send_header("Content-Length", str(len(proxied_body)))
                 self.end_headers()
                 self.wfile.write(proxied_body)

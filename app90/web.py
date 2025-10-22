@@ -36,6 +36,32 @@ from news_loader import find_news_for_timestamp
 
 IOU_TOLERANCE = 0.005
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+MAX_FILES = 25
+
+def _add_security_headers(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("X-Frame-Options", "DENY")
+    handler.send_header("Referrer-Policy", "no-referrer")
+    handler.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
+
+def _sanitize_csv_filename(name: str, suffix: str) -> str:
+    base = (name or "").replace("\\", "/").split("/")[-1]
+    base = base.replace('"', "").replace("'", "").strip()
+    if "." in base:
+        base = base.rsplit(".", 1)[0]
+    filtered = "".join(ch for ch in base if ch.isalnum() or ch in ("-", "_", "."))
+    filtered = filtered.strip(".") or "converted"
+    out = filtered
+    if not out.lower().endswith(suffix.lower()):
+        out = filtered + suffix
+    if len(out) > 128:
+        if "." in out:
+            stem, ext = out.rsplit(".", 1)
+            out = (stem[:100] or "converted") + "." + ext
+        else:
+            out = out[:120]
+    return out
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 def load_candles_from_text(text: str, candle_cls: Type) -> List:
@@ -370,12 +396,15 @@ def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]
 
 
 class App90Handler(BaseHTTPRequestHandler):
+    server_version = "Candles90/1.0"
+    sys_version = ""
     def do_GET(self):
         asset = try_load_asset(self.path)
         if asset:
             payload, content_type = asset
             self.send_response(200)
             self.send_header("Content-Type", content_type)
+            _add_security_headers(self)
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
@@ -397,6 +426,7 @@ class App90Handler(BaseHTTPRequestHandler):
             return
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        _add_security_headers(self)
         self.end_headers()
         self.wfile.write(body)
 
@@ -421,6 +451,13 @@ class App90Handler(BaseHTTPRequestHandler):
             text = raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
 
             files_list = file_obj.get("files") or [{"filename": file_obj.get("filename"), "data": file_obj.get("data")}]
+            if len(files_list) > MAX_FILES:
+                self.send_response(413)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                _add_security_headers(self)
+                self.end_headers()
+                self.wfile.write(b"Too many files (max 25).")
+                return
 
             if self.path == "/converter":
                 candles = load_candles_from_text(text, ConverterCandle)
@@ -444,17 +481,13 @@ class App90Handler(BaseHTTPRequestHandler):
                         format_price(c.close),
                     ])
                 data = buffer.getvalue().encode("utf-8")
-                filename = file_obj.get("filename") or "converted.csv"
-                if "." in filename:
-                    base, _ = filename.rsplit(".", 1)
-                    download_name = base + "_90m.csv"
-                else:
-                    download_name = filename + "_90m.csv"
-                download_name = download_name.strip().replace('"', '') or "converted_90m.csv"
+                filename = file_obj.get("filename") or "converted"
+                download_name = _sanitize_csv_filename(filename, "_90m.csv")
 
                 self.send_response(200)
                 self.send_header("Content-Type", "text/csv; charset=utf-8")
                 self.send_header("Content-Disposition", f"attachment; filename=\"{download_name}\"")
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(data)
                 return
@@ -754,6 +787,7 @@ class App90Handler(BaseHTTPRequestHandler):
                 body = "<div class='card'>" + "".join(info_lines) + "</div>" + table
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page("app90 sonuçlar", body, active_tab="analyze"))
                 return
@@ -784,6 +818,7 @@ class App90Handler(BaseHTTPRequestHandler):
                 body = info + table
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page("app90 DC List", body, active_tab="dc"))
                 return
@@ -869,6 +904,7 @@ class App90Handler(BaseHTTPRequestHandler):
                 body = info + table
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page("app90 Matrix", body, active_tab="matrix"))
                 return
@@ -878,6 +914,7 @@ class App90Handler(BaseHTTPRequestHandler):
             msg = html.escape(str(e) or "Bilinmeyen hata")
             self.send_response(400)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            _add_security_headers(self)
             self.end_headers()
             self.wfile.write(page("Hata", f"<p>Hata: {msg}</p><p><a href='/'>&larr; Geri</a></p>"))
 

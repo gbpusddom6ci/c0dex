@@ -29,6 +29,14 @@ from news_loader import find_news_for_timestamp
 MINUTES_PER_STEP = 60
 IOU_TOLERANCE = 0.005
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+MAX_FILES = 25
+
+def _add_security_headers(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("X-Frame-Options", "DENY")
+    handler.send_header("Referrer-Policy", "no-referrer")
+    handler.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 def load_candles_from_text(text: str) -> List[Candle]:
@@ -310,6 +318,8 @@ def render_iou_index() -> bytes:
 
 
 class AppHandler(BaseHTTPRequestHandler):
+    server_version = "Candles321/1.0"
+    sys_version = ""
     def _parse_multipart(self) -> Dict[str, Any]:
         ct = self.headers.get("Content-Type", "")
         try:
@@ -358,6 +368,7 @@ class AppHandler(BaseHTTPRequestHandler):
             payload, content_type = asset
             self.send_response(200)
             self.send_header("Content-Type", content_type)
+            _add_security_headers(self)
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
@@ -372,6 +383,7 @@ class AppHandler(BaseHTTPRequestHandler):
             body = render_index()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        _add_security_headers(self)
         self.end_headers()
         self.wfile.write(body)
 
@@ -396,6 +408,13 @@ class AppHandler(BaseHTTPRequestHandler):
             files = [entry for entry in file_field.get("files", []) if entry.get("data") is not None]
             if not files:
                 raise ValueError("CSV yüklenmedi")
+            if len(files) > MAX_FILES:
+                self.send_response(413)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                _add_security_headers(self)
+                self.end_headers()
+                self.wfile.write(b"Too many files (max 25).")
+                return
 
             def decode_entry(entry: Dict[str, Any]) -> str:
                 raw = entry.get("data")
@@ -517,6 +536,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page("app321 sonuçlar", body, active_tab="analyze"))
                 return
@@ -550,6 +570,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 body = info + table
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page("app321 DC List", body, active_tab="dc"))
                 return
@@ -607,6 +628,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 body = info + table
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page("app321 - Matrix", body, active_tab="matrix"))
                 return
@@ -799,6 +821,7 @@ class AppHandler(BaseHTTPRequestHandler):
             msg = html.escape(str(exc) or "Bilinmeyen hata")
             self.send_response(400)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            _add_security_headers(self)
             self.end_headers()
             self.wfile.write(page("Hata", f"<p>Hata: {msg}</p><p><a href='/'>&larr; Geri</a></p>"))
 

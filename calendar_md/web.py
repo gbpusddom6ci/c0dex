@@ -17,6 +17,13 @@ from favicon import render_head_links, try_load_asset
 from .parser import parse_calendar_markdown, to_json_document
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+MAX_FILES = 25
+
+def _add_security_headers(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("X-Frame-Options", "DENY")
+    handler.send_header("Referrer-Policy", "no-referrer")
+    handler.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
 
 def render_form(
     initial_text: str = "",
@@ -206,6 +213,8 @@ def _sanitize_filename(name: str) -> str:
 
 
 class CalendarHandler(BaseHTTPRequestHandler):
+    server_version = "CalendarMD/1.0"
+    sys_version = ""
     form_defaults = {
         "markdown": "",
         "year": "2025",
@@ -228,11 +237,13 @@ class CalendarHandler(BaseHTTPRequestHandler):
         if self.path in {"/", "/index", "/index.html"}:
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            _add_security_headers(self)
             self.end_headers()
             self.wfile.write(render_form())
         elif self.path == "/health":
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            _add_security_headers(self)
             self.end_headers()
             self.wfile.write(b"ok")
         else:
@@ -243,6 +254,7 @@ class CalendarHandler(BaseHTTPRequestHandler):
         if length > MAX_UPLOAD_BYTES:
             self.send_response(413)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            _add_security_headers(self)
             self.end_headers()
             self.wfile.write(b"Upload too large (max 50 MB).")
             return
@@ -253,6 +265,13 @@ class CalendarHandler(BaseHTTPRequestHandler):
         markdown = fields.get("markdown", "")
 
         file_items = file_data.get("markdown_file") or []
+        if len(file_items) > MAX_FILES:
+            self.send_response(413)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            _add_security_headers(self)
+            self.end_headers()
+            self.wfile.write(b"Too many files (max 25).")
+            return
         outputs: List[Tuple[str, bytes]] = []
 
         try:
@@ -285,6 +304,7 @@ class CalendarHandler(BaseHTTPRequestHandler):
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.send_header("Content-Disposition", f'attachment; filename="{name}"')
                     self.send_header("Content-Length", str(len(result_bytes)))
+                    _add_security_headers(self)
                     self.end_headers()
                     self.wfile.write(result_bytes)
                     return
@@ -300,6 +320,7 @@ class CalendarHandler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "application/zip")
                 self.send_header("Content-Disposition", f'attachment; filename="{zip_name}"')
                 self.send_header("Content-Length", str(len(zip_bytes)))
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(zip_bytes)
                 return
@@ -322,11 +343,13 @@ class CalendarHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Disposition", f'attachment; filename="{safe_name}"')
             self.send_header("Content-Length", str(len(result_bytes)))
+            _add_security_headers(self)
             self.end_headers()
             self.wfile.write(result_bytes)
         except Exception as exc:  # noqa: BLE001
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            _add_security_headers(self)
             self.end_headers()
             self.wfile.write(
                 render_form(
