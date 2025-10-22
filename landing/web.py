@@ -131,7 +131,7 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
         height: auto;
       }}
       .planet--app48 {{ top: calc(6% + 25px); left: 50%; width: 150px; }}
-      .planet--app72 {{ top: 24%; left: 90%; margin-left: -20px; }}
+      .planet--app72 {{ top: calc(24% - 8px); left: 90%; margin-left: -20px; }}
       .planet--app80 {{ top: 78%; left: 92%; }}
       .planet--app90 {{ top: 46%; left: 20%; margin-left: -100px; }}
       .planet--app96 {{ top: 51%; left: 86%; margin-left: 65px; }}
@@ -151,7 +151,7 @@ def build_html(app_links: Dict[str, Dict[str, str]]) -> bytes:
           width: 90px;
         }}
         .planet--app48 {{ top: calc(8% + 25px); left: 50%; width: 104px; }}
-        .planet--app72 {{ top: 28%; left: 90%; margin-left: -20px; }}
+        .planet--app72 {{ top: calc(28% - 8px); left: 90%; margin-left: -20px; }}
         .planet--app80 {{ top: 80%; left: 92%; }}
         .planet--app90 {{ top: 50%; left: 24%; margin-left: -100px; }}
         .planet--app96 {{ top: 53%; left: 86%; margin-left: 0px; }}
