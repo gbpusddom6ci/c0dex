@@ -16,6 +16,7 @@ from favicon import render_head_links, try_load_asset
 
 from .parser import parse_calendar_markdown, to_json_document
 
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 def render_form(
     initial_text: str = "",
@@ -239,6 +240,12 @@ class CalendarHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         length = int(self.headers.get("Content-Length", "0"))
+        if length > MAX_UPLOAD_BYTES:
+            self.send_response(413)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"Upload too large (max 50 MB).")
+            return
         content_type = self.headers.get("Content-Type", "")
         payload = self.rfile.read(length) if length > 0 else b""
         field_data, file_data = parse_form(payload, content_type, self.headers)

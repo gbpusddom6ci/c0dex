@@ -28,6 +28,7 @@ from news_loader import find_news_for_timestamp
 
 MINUTES_PER_STEP = 60
 IOU_TOLERANCE = 0.005
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 def load_candles_from_text(text: str) -> List[Candle]:
@@ -379,6 +380,17 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         try:
+            # Upload size guard
+            try:
+                length_hdr = int(self.headers.get("Content-Length", "0") or 0)
+            except Exception:
+                length_hdr = 0
+            if length_hdr > MAX_UPLOAD_BYTES:
+                self.send_response(413)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Upload too large (max 50 MB).")
+                return
             form = self._parse_multipart()
             file_field = form.get("csv") or {}
             files = [entry for entry in file_field.get("files", []) if entry.get("data") is not None]
