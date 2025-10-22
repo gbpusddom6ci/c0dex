@@ -184,7 +184,7 @@ def render_analyze_index() -> bytes:
       </form>
     </div>
     <p>CSV başlıkları: <code>Time, Open, High, Low, Close (Last)</code> (eş anlamlılar desteklenir).</p>
-    <p><strong>Not:</strong> 18:00 mumları DC sayılmaz, app90 için ek istisnalar ileride tanımlanacaktır.</p>
+    <p><strong>Not:</strong> 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 mumları DC sayılmaz; bu slotlar IOU taramasında da dışlanır.</p>
     """
     return page("app90", body, active_tab="analyze")
 
@@ -215,7 +215,7 @@ def render_dc_index() -> bytes:
         </div>
       </form>
     </div>
-    <p><strong>Not:</strong> Liste, app90 için hesaplanan tüm DC mumlarını içerir. 18:00 mumları her zaman DC dışındadır.</p>
+    <p><strong>Not:</strong> Liste, app90 için hesaplanan tüm DC mumlarını içerir. 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 mumları DC dışındadır.</p>
     """
     return page("app90 - DC List", body, active_tab="dc")
 
@@ -325,7 +325,7 @@ def render_iou_index() -> bytes:
       </form>
     </div>
     <p>IOU taraması, limit üzerindeki OC/PrevOC değerlerinin aynı işaretli olduğu mumları dosya bazında listeler. Çoklu CSV seçimini destekler.</p>
-    <p><strong>Not:</strong> 18:00 mumları IOU listesine dahil edilmez; app90 için ek istisnalar ileride belirlenecektir.</p>
+    <p><strong>Not:</strong> 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 mumları IOU listesine dahil edilmez.</p>
     """
     return page("app90 - IOU", body, active_tab="iou")
 

@@ -1,6 +1,6 @@
 # app90 – 90 Dakikalık Timeframe Paketi
 
-app90, 90 dakikalık mumlar için temel sequence sayımı, IOU taraması ve 30m → 90m dönüştürücüyü tek pakette toplar. Şimdilik yalnızca genel DC kuralları uygulanır; app90'a özel istisnalar ileride tanımlanacaktır.
+app90, 90 dakikalık mumlar için temel sequence sayımı, IOU taraması ve 30m → 90m dönüştürücüyü tek pakette toplar. Uygulama özelinde aşağıdaki slot istisnaları aktiftir: 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 mumları DC değildir ve IOU listelerine alınmaz.
 
 ## Neler Var?
 
@@ -42,4 +42,4 @@ Sekmeler:
 
 - Zorunlu sütunlar: `Time`, `Open`, `High`, `Low`, `Close (Last)` (eş anlamlılar desteklenir)  
 - Veri timestamp’e göre sıralanır; `UTC-5` seçildiyse otomatik +1 saat uygulanır.  
-- DC kuralı: 18:00 mumları DC değildir, ardışık DC engellenir. App90'a özel ek istisnalar daha sonra eklenecektir.
+- DC kuralı: 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 mumları DC değildir; ardışık DC engellenir. Aynı slotlar IOU taramasında dışlanır.
