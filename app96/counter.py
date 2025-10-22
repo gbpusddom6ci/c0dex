@@ -25,6 +25,22 @@ SEQUENCES: Dict[str, List[int]] = {
 }
 
 
+def is_forbidden_dc_time(ts: datetime) -> bool:
+    tod = ts.time()
+    weekday = ts.weekday()
+    if tod.hour == 18 and tod.minute == 0:
+        return True
+    if tod.hour == 19 and tod.minute == 36 and weekday != 6:  # Sunday = 6
+        return True
+    if weekday == 4 and tod.hour == 16 and tod.minute == 24:  # Friday
+        return True
+    return False
+
+
+def is_forbidden_iou_time(ts: datetime) -> bool:
+    return is_forbidden_dc_time(ts)
+
+
 def normalize_key(name: str) -> str:
     return name.strip().strip('"').strip("'").lower()
 
@@ -148,9 +164,8 @@ def compute_dc_flags(candles: List[Candle]) -> List[Optional[bool]]:
         within = min(prev.open, prev.close) <= cur.close <= max(prev.open, prev.close)
         cond = cur.high <= prev.high and cur.low >= prev.low and within
 
-        # Genel kurallar: 18:00 mumları DC sayılmaz, ardışık DC engellenir.
-        tod = cur.ts.time()
-        if tod.hour == 18 and tod.minute == 0:
+        # Genel kurallar: belirli slotlar DC sayılmaz, ardışık DC engellenir.
+        if is_forbidden_dc_time(cur.ts):
             cond = False
 
         prev_flag = bool(flags[i - 1]) if flags[i - 1] is not None else False
@@ -524,6 +539,9 @@ def _detect_signal_candles(
             if idx is None or not (0 <= idx < len(candles)):
                 continue
             if idx - 1 < 0:
+                continue
+            ts = candles[idx].ts
+            if is_forbidden_iou_time(ts):
                 continue
             oc = candles[idx].close - candles[idx].open
             prev_oc = candles[idx - 1].close - candles[idx - 1].open

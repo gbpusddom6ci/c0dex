@@ -1,6 +1,6 @@
 # app96 – 96 Dakikalık Timeframe Paketi
 
-app96, 96 dakikalık mumlar için temel sayım ve IOU tarama araçlarını tek pakette sunar. Uygulamaya özel DC veya IOU istisnaları henüz eklenmemiştir; yalnızca genel kurallar uygulanır.
+app96, 96 dakikalık mumlar için temel sayım ve IOU tarama araçlarını tek pakette sunar. Uygulamaya özel slot istisnaları aktiftir: 18:00, (Pazar hariç) 19:36 ve Cuma 16:24 mumları DC değildir ve IOU taramalarında görünmez.
 
 ## Neler Var?
 
@@ -42,5 +42,4 @@ Sekmeler:
 
 - Zorunlu sütunlar: `Time`, `Open`, `High`, `Low`, `Close (Last)` (eş anlamlılar desteklenir)  
 - Veri timestamp’e göre sıralanır; `UTC-5` seçildiyse otomatik +1 saat uygulanır.  
-- DC kuralı: 18:00 mumları DC değildir, ardışık DC engellenir. Diğer istisnalar daha sonra eklenecektir.
-
+- DC kuralı: 18:00, (Pazar hariç) 19:36 ve Cuma 16:24 mumları DC değildir; ardışık DC engellenir. Aynı slotlar IOU taramasında dışlanır.
