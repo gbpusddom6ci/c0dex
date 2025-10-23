@@ -836,6 +836,8 @@ class App96Handler(BaseHTTPRequestHandler):
 
                 header_cells = ''.join(f"<th>{'+'+str(o) if o>0 else str(o)}</th>" for o in offsets)
                 rows = []
+                # Her offset için ilk non-use_target tahmin hücresini vurgulamak üzere takip
+                first_pred_marked: Dict[int, bool] = {o: False for o in offsets}
                 for vi, v in enumerate(seq_values):
                     cells = [f"<td>{v}</td>"]
                     for o in offsets:
@@ -885,8 +887,13 @@ class App96Handler(BaseHTTPRequestHandler):
                                 delta_steps = max(0, v - first)
                                 base_ts = alignment.target_ts or alignment.start_ref_ts or candles[base_idx].ts
                                 ts_pred = predict_time_after_n_steps(base_ts, delta_steps)
-                            
-                            cells.append(f"<td>{html.escape(ts_pred.strftime('%Y-%m-%d %H:%M:%S'))} (pred, OC -, PrevOC -)</td>")
+                            # İlk non-use_target tahmin hücresini yarı opak yeşil ile vurgula
+                            highlight = False
+                            if not use_target and not first_pred_marked.get(o, False):
+                                highlight = True
+                                first_pred_marked[o] = True
+                            style_attr = " style=\"background: rgba(46, 204, 113, 0.25)\"" if highlight else ""
+                            cells.append(f"<td{style_attr}>{html.escape(ts_pred.strftime('%Y-%m-%d %H:%M:%S'))} (pred, OC -, PrevOC -)</td>")
                     rows.append(f"<tr>{''.join(cells)}</tr>")
 
                 status_summary = ', '.join(
