@@ -179,15 +179,15 @@ def render_index() -> bytes:
           <div>
             <label>Dizi</label>
             <select name='sequence'>
-              <option value='S1'>S1</option>
-              <option value='S2' selected>S2</option>
+              <option value='S1' selected>S1</option>
+              <option value='S2'>S2</option>
             </select>
           </div>
           <div>
             <label>Girdi TZ</label>
             <select name='input_tz'>
-              <option value='UTC-5' selected>UTC-5</option>
-              <option value='UTC-4'>UTC-4</option>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
             </select>
           </div>
           <div>
@@ -254,8 +254,8 @@ def render_dc_index() -> bytes:
           <div>
             <label>Girdi TZ</label>
             <select name='input_tz'>
-              <option value='UTC-5' selected>UTC-5</option>
-              <option value='UTC-4'>UTC-4</option>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
             </select>
           </div>
           <div>
@@ -292,15 +292,15 @@ def render_matrix_index() -> bytes:
           <div>
             <label>Girdi TZ</label>
             <select name='input_tz'>
-              <option value='UTC-5' selected>UTC-5</option>
-              <option value='UTC-4'>UTC-4</option>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
             </select>
           </div>
           <div>
             <label>Dizi</label>
             <select name='sequence'>
-              <option value='S1'>S1</option>
-              <option value='S2' selected>S2</option>
+              <option value='S1' selected>S1</option>
+              <option value='S2'>S2</option>
             </select>
           </div>
         </div>
@@ -330,15 +330,15 @@ def render_iou_index() -> bytes:
           <div>
             <label>Girdi TZ</label>
             <select name='input_tz'>
-              <option value='UTC-5' selected>UTC-5</option>
-              <option value='UTC-4'>UTC-4</option>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
             </select>
           </div>
           <div>
             <label>Dizi</label>
             <select name='sequence'>
-              <option value='S1'>S1</option>
-              <option value='S2' selected>S2</option>
+              <option value='S1' selected>S1</option>
+              <option value='S2'>S2</option>
             </select>
           </div>
           <div>
@@ -352,7 +352,7 @@ def render_iou_index() -> bytes:
         </div>
         <div class='row' style='margin-top:12px; gap:32px;'>
           <label style='display:flex; align-items:center; gap:8px;'>
-            <input type='checkbox' name='xyz_mode' />
+            <input type='checkbox' name='xyz_mode' checked />
             <span>XYZ kümesi (haber filtreli)</span>
           </label>
           <label style='display:flex; align-items:center; gap:8px;'>
@@ -477,8 +477,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b"Too many files (max 25).")
                 return
 
-            sequence = (form.get("sequence", {}).get("value") or "S2").strip()
-            tz_s = (form.get("input_tz", {}).get("value") or "UTC-5").strip()
+            sequence = (form.get("sequence", {}).get("value") or "S1").strip()
+            tz_s = (form.get("input_tz", {}).get("value") or "UTC-4").strip()
             offset_s = (form.get("offset", {}).get("value") or "0").strip() if self.path == "/analyze" else "0"
             show_dc = ("show_dc" in form) if self.path == "/analyze" else False
             only_syn = ("only_syn" in form) if self.path == "/dc" else False
@@ -537,7 +537,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 tolerance_val = abs(tolerance_val)
                 limit_margin = limit_val + tolerance_val
 
-                sequence = (form.get("sequence", {}).get("value") or "S2").strip() or "S2"
+                sequence = (form.get("sequence", {}).get("value") or "S1").strip() or "S1"
                 tz_value = tz_s or "UTC-5"
 
                 sections: List[str] = []

@@ -177,15 +177,15 @@ def render_analyze_index() -> bytes:
           <div>
             <label>Girdi TZ</label>
             <select name='input_tz'>
-              <option value='UTC-5' selected>UTC-5</option>
-              <option value='UTC-4'>UTC-4</option>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
             </select>
           </div>
           <div>
             <label>Dizi</label>
             <select name='sequence'>
-              <option value='S1'>S1</option>
-              <option value='S2' selected>S2</option>
+              <option value='S1' selected>S1</option>
+              <option value='S2'>S2</option>
             </select>
           </div>
           <div>
@@ -232,8 +232,8 @@ def render_dc_index() -> bytes:
           <div>
             <label>Girdi TZ</label>
             <select name='input_tz'>
-              <option value='UTC-5' selected>UTC-5</option>
-              <option value='UTC-4'>UTC-4</option>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
             </select>
           </div>
         </div>
@@ -264,15 +264,15 @@ def render_matrix_index() -> bytes:
           <div>
             <label>Girdi TZ</label>
             <select name='input_tz'>
-              <option value='UTC-5' selected>UTC-5</option>
-              <option value='UTC-4'>UTC-4</option>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
             </select>
           </div>
           <div>
             <label>Dizi</label>
             <select name='sequence'>
-              <option value='S1'>S1</option>
-              <option value='S2' selected>S2</option>
+              <option value='S1' selected>S1</option>
+              <option value='S2'>S2</option>
             </select>
           </div>
         </div>
@@ -317,15 +317,15 @@ def render_iou_index() -> bytes:
           <div>
             <label>Girdi TZ</label>
             <select name='input_tz'>
-              <option value='UTC-5' selected>UTC-5</option>
-              <option value='UTC-4'>UTC-4</option>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
             </select>
           </div>
           <div>
             <label>Dizi</label>
             <select name='sequence'>
-              <option value='S1'>S1</option>
-              <option value='S2' selected>S2</option>
+              <option value='S1' selected>S1</option>
+              <option value='S2'>S2</option>
             </select>
           </div>
           <div>
@@ -339,7 +339,7 @@ def render_iou_index() -> bytes:
         </div>
         <div class='row' style='margin-top:12px; gap:32px;'>
           <label style='display:flex; align-items:center; gap:8px;'>
-            <input type='checkbox' name='xyz_mode' />
+            <input type='checkbox' name='xyz_mode' checked />
             <span>XYZ kümesi (haber filtreli)</span>
           </label>
           <label style='display:flex; align-items:center; gap:8px;'>
@@ -494,8 +494,8 @@ class App80Handler(BaseHTTPRequestHandler):
                 return
 
             if self.path == "/iou":
-                sequence = (form.get("sequence", {}).get("value") or "S2").strip() or "S2"
-                tz_value = (form.get("input_tz", {}).get("value") or "UTC-5").strip()
+                sequence = (form.get("sequence", {}).get("value") or "S1").strip() or "S1"
+                tz_value = (form.get("input_tz", {}).get("value") or "UTC-4").strip()
                 limit_raw = (form.get("limit", {}).get("value") or "0").strip()
                 tol_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
                 xyz_enabled = "xyz_mode" in form
@@ -686,10 +686,10 @@ class App80Handler(BaseHTTPRequestHandler):
             if not candles:
                 raise ValueError("Veri boş veya çözümlenemedi")
 
-            sequence = (form.get("sequence", {}).get("value") or "S2").strip() if self.path in ("/analyze", "/matrix") else "S2"
+            sequence = (form.get("sequence", {}).get("value") or "S1").strip() if self.path in ("/analyze", "/matrix") else "S1"
             offset_s = (form.get("offset", {}).get("value") or "0").strip() if self.path == "/analyze" else "0"
             show_dc = ("show_dc" in form) if self.path == "/analyze" else False
-            tz_label_sel = (form.get("input_tz", {}).get("value") or "UTC-5").strip()
+            tz_label_sel = (form.get("input_tz", {}).get("value") or "UTC-4").strip()
 
             tz_norm = tz_label_sel.upper().replace(" ", "")
             tz_label = "UTC-4 -> UTC-4 (+0h)"
