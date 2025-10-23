@@ -212,10 +212,10 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
 ### 5.5 IOU Haber Akışı & XYZ Filtresi (2025-09)
 - **Checkbox:** app48/app72/app80/app120/app321 IOU formlarında “XYZ kümesi (haber filtreli)” seçeneği bulunur. İşaretlendiğinde haber taşımayan offsetler elenir ve kalanlar kart üst bilgisinde `XYZ Kümesi` satırıyla listelenir.
 - **Haber kaynağı (`news_loader.py`):** JSON takvim dosyalarında `time_24h` yoksa `time`, `time_text`, `time_label`, `session` alanlarını dener. `"All Day"` / `all_day=true` kayıtları gün bazında yakalar, `recent-null` penceresi null actual taşıyan önceki olayları dahil eder.
-- **Hücre formatı:** Haber sütunu `Var`, `Holiday` veya `Yok` ile başlar. Tatil satırları sadece bilgi amaçlıdır; grafiksel olarak listelenir ama offset elenmesini tetiklemez.
-- **Tatiller:** Başlıkta “holiday” geçen olaylar `effective_news=False` sayılır. Sadece tatil içeren bir offset, XYZ kümesinde tutulur; satır `Holiday<br>All Day Bank Holiday (holiday)` gibi görünür.
+- **Hücre formatı:** Haber sütunu `Var`, `Holiday` veya `Yok` ile başlar. Tatil satırları sadece bilgi amaçlıdır; grafiksel olarak listelenir fakat haber sayılmadıkları için ilgili offsetleri XYZ kümesinden çıkarır.
+- **Tatiller:** Başlıkta “holiday” geçen olaylar `effective_news=False` sayılır. Tatil veya yalnız bilgi içeren satırlar, haber kriterini karşılamadığından ilgili offseti XYZ kümesinin dışında bırakır; satır `Holiday<br>All Day Bank Holiday (holiday)` gibi görünür.
 - **All-day haberler:** Zaman etiketi “All Day – Başlık” formatıyla yazılır. Tatil dışı all-day olayları offset’i korur.
-- **17:xx slot kuralı (app72):** `SPECIAL_SLOT_TIMES = {16:48, 18:00, 19:12, 20:24}`. Haber listesi boş olsa bile bu saatler “Kural slot HH:MM” notuyla haber var kabul edilir ve elenmez. Slotta tatil varsa nötr kalır; yalnızca gerçek olmayan tatiller filtreyi tetiklemez.
+- **17:xx slot kuralı (app72):** `SPECIAL_SLOT_TIMES = {16:48, 18:00, 19:12, 20:24}`. Haber listesi boşsa bu saatler “Kural slot HH:MM” notuyla korunur ve XYZ’de kalır. Ancak tatil/all-day gibi bilgi kayıtları geldiğinde haber sayılmaz; bu slotlar da diğer offsetler gibi elenir.
 - **Boş haberler:** Haber bulunmazsa hücre `Yok` olur ve offset elenir. Böylece yalnızca haber (veya özel slot) olmayan kombinasyonlar XYZ dışına atılır.
 - **Tolerans entegrasyonu:** XYZ filtresi hesaplanırken de `|OC|`, `|PrevOC| ≥ limit + tolerans` şartı aranır; tolerans dahilinde kalan satırlar otomatik olarak filtre dışına taşınır.
 - **Takvim JSON şeması:** Her kayıt aşağıdaki alanları kullanır; eksik alanlar sırayla diğer alternatiflerden doldurulur:

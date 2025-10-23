@@ -15,11 +15,14 @@ from landing.web import build_html, try_load_local_asset
 from app48.web import run as run_app48
 from app72.web import run as run_app72
 from app80.web import run as run_app80
+from app90.web import run as run_app90
 from app96.web import run as run_app96
 from app120.web import run as run_app120
 from app321.web import run as run_app321
 from calendar_md.web import run as run_calendar
 from favicon import try_load_asset
+
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 @dataclass(frozen=True)
@@ -104,10 +107,18 @@ def strip_hop_headers(headers: Iterable[Tuple[str, str]]) -> List[Tuple[str, str
 def make_handler(backends: List[Backend], landing_bytes: bytes):
     class UnifiedHandler(BaseHTTPRequestHandler):
         server_version = "CandlesUnified/1.0"
+        sys_version = ""
+
+        def _add_security_headers(self) -> None:
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
 
         def _serve_landing(self) -> None:
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self._add_security_headers()
             self.send_header("Content-Length", str(len(landing_bytes)))
             self.end_headers()
             self.wfile.write(landing_bytes)
@@ -116,6 +127,7 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
             payload = b"ok"
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self._add_security_headers()
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
@@ -126,6 +138,7 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
                 payload, content_type = local_asset
                 self.send_response(200)
                 self.send_header("Content-Type", content_type)
+                self._add_security_headers()
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
                 self.wfile.write(payload)
@@ -163,6 +176,15 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
 
         def _proxy(self, backend: Backend, sub_path: str) -> None:
             content_length = int(self.headers.get("Content-Length", "0") or 0)
+            if content_length > MAX_UPLOAD_BYTES:
+                msg = b"Upload too large (max 50 MB)."
+                self.send_response(413)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self._add_security_headers()
+                self.send_header("Content-Length", str(len(msg)))
+                self.end_headers()
+                self.wfile.write(msg)
+                return
             body = self.rfile.read(content_length) if content_length > 0 else None
 
             headers = {k: v for k, v in self.headers.items()}
@@ -191,6 +213,8 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
                     if header.lower() == "content-length":
                         continue
                     self.send_header(header, value)
+                # add our security headers on top of proxied response
+                self._add_security_headers()
                 self.send_header("Content-Length", str(len(proxied_body)))
                 self.end_headers()
                 self.wfile.write(proxied_body)
@@ -217,6 +241,7 @@ def run(
     app48_port: int,
     app72_port: int,
     app80_port: int,
+    app90_port: int,
     app96_port: int,
     app120_port: int,
     app321_port: int,
@@ -226,6 +251,7 @@ def run(
         Backend(name="app48", title="app48", host=backend_host, port=app48_port, prefix="/app48", description="48 dakikalık mum sayımı ve dönüştürücü"),
         Backend(name="app72", title="app72", host=backend_host, port=app72_port, prefix="/app72", description="72 dakikalık sayım ve 12→72 dönüştürücü (7x12m)"),
         Backend(name="app80", title="app80", host=backend_host, port=app80_port, prefix="/app80", description="80 dakikalık sayım ve 20→80 dönüştürücü (4x20m)"),
+        Backend(name="app90", title="app90", host=backend_host, port=app90_port, prefix="/app90", description="90 dakikalık sayım ve 30→90 dönüştürücü (3x30m)"),
         Backend(name="app96", title="app96", host=backend_host, port=app96_port, prefix="/app96", description="96 dakikalık sayım ve 12→96 dönüştürücü (8x12m)"),
         Backend(name="app120", title="app120", host=backend_host, port=app120_port, prefix="/app120", description="120 dakikalık analiz ve dönüştürücü"),
         Backend(name="app321", title="app321", host=backend_host, port=app321_port, prefix="/app321", description="60 dakikalık sayım araçları"),
@@ -235,6 +261,7 @@ def run(
     start_backend_thread("app48", run_app48, backend_host, app48_port)
     start_backend_thread("app72", run_app72, backend_host, app72_port)
     start_backend_thread("app80", run_app80, backend_host, app80_port)
+    start_backend_thread("app90", run_app90, backend_host, app90_port)
     start_backend_thread("app96", run_app96, backend_host, app96_port)
     start_backend_thread("app120", run_app120, backend_host, app120_port)
     start_backend_thread("app321", run_app321, backend_host, app321_port)
@@ -264,6 +291,7 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--app48-port", type=int, default=9200, help="app48 iç portu")
     parser.add_argument("--app72-port", type=int, default=9201, help="app72 iç portu")
     parser.add_argument("--app80-port", type=int, default=9202, help="app80 iç portu")
+    parser.add_argument("--app90-port", type=int, default=9207, help="app90 iç portu")
     parser.add_argument("--app96-port", type=int, default=9206, help="app96 iç portu")
     parser.add_argument("--app120-port", type=int, default=9203, help="app120 iç portu")
     parser.add_argument("--app321-port", type=int, default=9204, help="app321 iç portu")
@@ -277,6 +305,7 @@ def main(argv: List[str] | None = None) -> int:
         args.app48_port,
         args.app72_port,
         args.app80_port,
+        args.app90_port,
         args.app96_port,
         args.app120_port,
         args.app321_port,

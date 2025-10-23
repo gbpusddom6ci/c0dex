@@ -25,7 +25,7 @@ from .main import (
     Candle as ConverterCandle,
     estimate_timeframe_minutes,
     adjust_to_output_tz,
-    convert_12m_to_96m,
+    convert_30m_to_90m,
     format_price,
 )
 from email.parser import BytesParser
@@ -61,6 +61,7 @@ def _sanitize_csv_filename(name: str, suffix: str) -> str:
         else:
             out = out[:120]
     return out
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 def load_candles_from_text(text: str, candle_cls: Type) -> List:
@@ -145,13 +146,13 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
   </head>
   <body>
     <header>
-      <h2>app96</h2>
+      <h2>app90</h2>
     </header>
     <nav class='tabs'>
       <a href='/' class='{ 'active' if active_tab=="analyze" else '' }'>Analiz</a>
       <a href='/dc' class='{ 'active' if active_tab=="dc" else '' }'>DC List</a>
       <a href='/matrix' class='{ 'active' if active_tab=="matrix" else '' }'>Matrix</a>
-      <a href='/converter' class='{ 'active' if active_tab=="converter" else '' }'>12→96 Converter</a>
+      <a href='/converter' class='{ 'active' if active_tab=="converter" else '' }'>30→90 Converter</a>
       <a href='/iou' class='{ 'active' if active_tab=="iou" else '' }'>IOU Tarama</a>
     </nav>
     {body}
@@ -171,7 +172,7 @@ def render_analyze_index() -> bytes:
           </div>
           <div>
             <label>Zaman Dilimi</label>
-            <div>96m</div>
+            <div>90m</div>
           </div>
           <div>
             <label>Girdi TZ</label>
@@ -210,9 +211,9 @@ def render_analyze_index() -> bytes:
       </form>
     </div>
     <p>CSV başlıkları: <code>Time, Open, High, Low, Close (Last)</code> (eş anlamlılar desteklenir).</p>
-    <p><strong>Not:</strong> 18:00, (Pazar hariç) 19:36 ve Cuma 16:24 mumları DC sayılmaz; aynı slotlar IOU taramasında da dışlanır.</p>
+    <p><strong>Not:</strong> 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 mumları DC sayılmaz; bu slotlar IOU taramasında da dışlanır.</p>
     """
-    return page("app96", body, active_tab="analyze")
+    return page("app90", body, active_tab="analyze")
 
 
 def render_dc_index() -> bytes:
@@ -226,7 +227,7 @@ def render_dc_index() -> bytes:
           </div>
           <div>
             <label>Zaman Dilimi</label>
-            <div>96m</div>
+            <div>90m</div>
           </div>
           <div>
             <label>Girdi TZ</label>
@@ -241,9 +242,9 @@ def render_dc_index() -> bytes:
         </div>
       </form>
     </div>
-    <p><strong>Not:</strong> Liste, app96 için hesaplanan tüm DC mumlarını içerir. 18:00, (Pazar hariç) 19:36 ve Cuma 16:24 mumları DC dışındadır.</p>
+    <p><strong>Not:</strong> Liste, app90 için hesaplanan tüm DC mumlarını içerir. 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 mumları DC dışındadır.</p>
     """
-    return page("app96 - DC List", body, active_tab="dc")
+    return page("app90 - DC List", body, active_tab="dc")
 
 
 def render_matrix_index() -> bytes:
@@ -257,7 +258,7 @@ def render_matrix_index() -> bytes:
           </div>
           <div>
             <label>Zaman Dilimi</label>
-            <div>96m</div>
+            <div>90m</div>
           </div>
           <div>
             <label>Girdi TZ</label>
@@ -280,23 +281,23 @@ def render_matrix_index() -> bytes:
       </form>
     </div>
     """
-    return page("app96 - Matrix", body, active_tab="matrix")
+    return page("app90 - Matrix", body, active_tab="matrix")
 
 
 def render_converter_index() -> bytes:
     body = """
     <div class='card'>
       <form method='post' action='/converter' enctype='multipart/form-data'>
-        <label>CSV (12m, UTC-5)</label>
+        <label>CSV (30m, UTC-5)</label>
         <input type='file' name='csv' accept='.csv,text/csv' required />
         <div style='margin-top:12px;'>
-          <button type='submit'>96m'e Dönüştür</button>
+          <button type='submit'>90m'e Dönüştür</button>
         </div>
       </form>
     </div>
-    <p>Girdi UTC-5 12 dakikalık mumlar olmalıdır. Çıktı UTC-4 96 dakikalık mumlar olarak indirilir (8 × 12m = 1 × 96m).</p>
+    <p>Girdi UTC-5 30 dakikalık mumlar olmalıdır. Çıktı UTC-4 90 dakikalık mumlar olarak indirilir (3 × 30m = 1 × 90m).</p>
     """
-    return page("app96 - Converter", body, active_tab="converter")
+    return page("app90 - Converter", body, active_tab="converter")
 
 
 def render_iou_index() -> bytes:
@@ -310,7 +311,7 @@ def render_iou_index() -> bytes:
           </div>
           <div>
             <label>Zaman Dilimi</label>
-            <div>96m</div>
+            <div>90m</div>
           </div>
           <div>
             <label>Girdi TZ</label>
@@ -351,9 +352,9 @@ def render_iou_index() -> bytes:
       </form>
     </div>
     <p>IOU taraması, limit üzerindeki OC/PrevOC değerlerinin aynı işaretli olduğu mumları dosya bazında listeler. Çoklu CSV seçimini destekler.</p>
-    <p><strong>Not:</strong> 18:00, (Pazar hariç) 19:36 ve Cuma 16:24 mumları IOU listesine dahil edilmez.</p>
+    <p><strong>Not:</strong> 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 mumları IOU listesine dahil edilmez.</p>
     """
-    return page("app96 - IOU", body, active_tab="iou")
+    return page("app90 - IOU", body, active_tab="iou")
 
 
 def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]]:
@@ -394,8 +395,8 @@ def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]
     return out
 
 
-class App96Handler(BaseHTTPRequestHandler):
-    server_version = "Candles96/1.0"
+class App90Handler(BaseHTTPRequestHandler):
+    server_version = "Candles90/1.0"
     sys_version = ""
     def do_GET(self):
         asset = try_load_asset(self.path)
@@ -463,10 +464,10 @@ class App96Handler(BaseHTTPRequestHandler):
                 if not candles:
                     raise ValueError("Veri boş veya çözümlenemedi")
                 tf_est = estimate_timeframe_minutes(candles)
-                if tf_est is None or abs(tf_est - 12) > 1.0:
-                    raise ValueError("Girdi 12 dakikalık akış gibi görünmüyor")
+                if tf_est is None or abs(tf_est - 30) > 1.0:
+                    raise ValueError("Girdi 30 dakikalık akış gibi görünmüyor")
                 shifted, _ = adjust_to_output_tz(candles, "UTC-5")
-                converted = convert_12m_to_96m(shifted)
+                converted = convert_30m_to_90m(shifted)
 
                 buffer = io.StringIO()
                 writer = csv.writer(buffer)
@@ -480,18 +481,12 @@ class App96Handler(BaseHTTPRequestHandler):
                         format_price(c.close),
                     ])
                 data = buffer.getvalue().encode("utf-8")
-                filename = file_obj.get("filename") or "converted.csv"
-                if "." in filename:
-                    base, _ = filename.rsplit(".", 1)
-                    download_name = base + "_96m.csv"
-                else:
-                    download_name = filename + "_96m.csv"
-                download_name = download_name.strip().replace('"', '') or "converted_96m.csv"
+                filename = file_obj.get("filename") or "converted"
+                download_name = _sanitize_csv_filename(filename, "_90m.csv")
 
                 self.send_response(200)
                 self.send_header("Content-Type", "text/csv; charset=utf-8")
-                safe_name = _sanitize_csv_filename(download_name, "")
-                self.send_header("Content-Disposition", f"attachment; filename=\"{safe_name}\"")
+                self.send_header("Content-Disposition", f"attachment; filename=\"{download_name}\"")
                 _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(data)
@@ -683,7 +678,7 @@ class App96Handler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(page("app96 IOU", body, active_tab="iou"))
+                self.wfile.write(page("app90 IOU", body, active_tab="iou"))
                 return
 
             candles = load_candles_from_text(text, CounterCandle)
@@ -716,7 +711,7 @@ class App96Handler(BaseHTTPRequestHandler):
 
                 info_lines = [
                     f"<div><strong>Data:</strong> {len(candles)} candles</div>",
-                    f"<div><strong>Zaman Dilimi:</strong> 96m</div>",
+                    f"<div><strong>Zaman Dilimi:</strong> 90m</div>",
                     f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>",
                     f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>",
                     f"<div><strong>Start:</strong> base(18:00): idx={base_idx} ts={html.escape(candles[base_idx].ts.strftime('%Y-%m-%d %H:%M:%S'))} ({align_status}); "
@@ -794,7 +789,7 @@ class App96Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 _add_security_headers(self)
                 self.end_headers()
-                self.wfile.write(page("app96 sonuçlar", body, active_tab="analyze"))
+                self.wfile.write(page("app90 sonuçlar", body, active_tab="analyze"))
                 return
 
             dc_flags = compute_dc_flags(candles)
@@ -814,7 +809,7 @@ class App96Handler(BaseHTTPRequestHandler):
                 info = (
                     f"<div class='card'>"
                     f"<div><strong>Data:</strong> {len(candles)} candles</div>"
-                    f"<div><strong>Zaman Dilimi:</strong> 96m</div>"
+                    f"<div><strong>Zaman Dilimi:</strong> 90m</div>"
                     f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
                     f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
                     f"<div><strong>DC count:</strong> {count}</div>"
@@ -825,7 +820,7 @@ class App96Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 _add_security_headers(self)
                 self.end_headers()
-                self.wfile.write(page("app96 DC List", body, active_tab="dc"))
+                self.wfile.write(page("app90 DC List", body, active_tab="dc"))
                 return
 
             if self.path == "/matrix":
@@ -836,8 +831,6 @@ class App96Handler(BaseHTTPRequestHandler):
 
                 header_cells = ''.join(f"<th>{'+'+str(o) if o>0 else str(o)}</th>" for o in offsets)
                 rows = []
-                # Her offset için ilk non-use_target tahmin hücresini vurgulamak üzere takip
-                first_pred_marked: Dict[int, bool] = {o: False for o in offsets}
                 for vi, v in enumerate(seq_values):
                     cells = [f"<td>{v}</td>"]
                     for o in offsets:
@@ -887,13 +880,8 @@ class App96Handler(BaseHTTPRequestHandler):
                                 delta_steps = max(0, v - first)
                                 base_ts = alignment.target_ts or alignment.start_ref_ts or candles[base_idx].ts
                                 ts_pred = predict_time_after_n_steps(base_ts, delta_steps)
-                            # İlk non-use_target tahmin hücresini yarı opak yeşil ile vurgula
-                            highlight = False
-                            if not use_target and not first_pred_marked.get(o, False):
-                                highlight = True
-                                first_pred_marked[o] = True
-                            style_attr = " style=\"background: rgba(46, 204, 113, 0.25)\"" if highlight else ""
-                            cells.append(f"<td{style_attr}>{html.escape(ts_pred.strftime('%Y-%m-%d %H:%M:%S'))} (pred, OC -, PrevOC -)</td>")
+                            
+                            cells.append(f"<td>{html.escape(ts_pred.strftime('%Y-%m-%d %H:%M:%S'))} (pred, OC -, PrevOC -)</td>")
                     rows.append(f"<tr>{''.join(cells)}</tr>")
 
                 status_summary = ', '.join(
@@ -905,7 +893,7 @@ class App96Handler(BaseHTTPRequestHandler):
                 info = (
                     f"<div class='card'>"
                     f"<div><strong>Data:</strong> {len(candles)} candles</div>"
-                    f"<div><strong>Zaman Dilimi:</strong> 96m</div>"
+                    f"<div><strong>Zaman Dilimi:</strong> 90m</div>"
                     f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
                     f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
                     f"<div><strong>Sequence:</strong> {html.escape(sequence)}</div>"
@@ -918,7 +906,7 @@ class App96Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 _add_security_headers(self)
                 self.end_headers()
-                self.wfile.write(page("app96 Matrix", body, active_tab="matrix"))
+                self.wfile.write(page("app90 Matrix", body, active_tab="matrix"))
                 return
 
             raise ValueError("Bilinmeyen istek")
@@ -935,15 +923,15 @@ class App96Handler(BaseHTTPRequestHandler):
 
 
 def run(host: str, port: int) -> None:
-    server = HTTPServer((host, port), App96Handler)
-    print(f"app96 web: http://{host}:{port}/")
+    server = HTTPServer((host, port), App90Handler)
+    print(f"app90 web: http://{host}:{port}/")
     server.serve_forever()
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="app96.web", description="app96 için birleşik web arayüzü")
+    parser = argparse.ArgumentParser(prog="app90.web", description="app90 için birleşik web arayüzü")
     parser.add_argument("--host", default="127.0.0.1", help="Sunucu adresi (vars: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=2196, help="Port (vars: 2196)")
+    parser.add_argument("--port", type=int, default=2190, help="Port (vars: 2190)")
     args = parser.parse_args(argv)
     run(args.host, args.port)
     return 0

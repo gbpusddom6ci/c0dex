@@ -22,8 +22,8 @@
 - Aynı işaretli OC/PrevOC çiftlerini aranır; limit alanı mutlak değer olarak alınır.
 - Hem `|OC|` hem `|PrevOC|` değerleri `limit + tolerans` eşiğini aşmadıkça satırlar raporlanmaz. Varsayılan tolerans 0.005, form üzerinden değiştirilebilir.
 - Çoklu CSV yükleme desteklenir; sonuçlar dosya bazlı kartlarda gösterilir.
-- XYZ filtresi aktifken haber taşımayan offsetler elenir. `news_loader.py`’nin sağladığı haber sütunu `Var`, `Holiday`, `Yok` etiketlerini içerir.
-- **Özel slot kuralı:** 16:48, 18:00, 19:12 ve 20:24 zaman damgaları haber olmasa bile “Kural slot HH:MM” notuyla korunur; XYZ filtresi bu satırları elemez.
+- XYZ filtresi aktifken haber taşımayan offsetler elenir. `news_loader.py`’nin sağladığı haber sütunu `Var`, `Holiday`, `Yok` etiketlerini içerir; `Holiday` etiketli satırlar bilgi amaçlıdır ve offseti küme dışında bırakır.
+- **Özel slot kuralı:** 16:48, 18:00, 19:12 ve 20:24 zaman damgaları haber yoksa “Kural slot HH:MM” notuyla korunur; ancak tatil/all-day kayıtları haber sayılmaz ve bu slotlar da elenir.
 
 ## Converter ve Matrix Sekmeleri
 - 12→72 Converter sekmesi haftasonu boşluklarını otomatik atlayarak blokları oluşturur; çıktı CSV olarak indirilebilir.

@@ -28,6 +28,15 @@ from news_loader import find_news_for_timestamp
 
 MINUTES_PER_STEP = 60
 IOU_TOLERANCE = 0.005
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+MAX_FILES = 25
+
+def _add_security_headers(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("X-Frame-Options", "DENY")
+    handler.send_header("Referrer-Policy", "no-referrer")
+    handler.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'")
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 def load_candles_from_text(text: str) -> List[Candle]:
@@ -142,15 +151,15 @@ def render_index() -> bytes:
       <div>
         <label>Girdi TZ</label>
         <select name='input_tz'>
-          <option value='UTC-5' selected>UTC-5</option>
-          <option value='UTC-4'>UTC-4</option>
+          <option value='UTC-5'>UTC-5</option>
+          <option value='UTC-4' selected>UTC-4</option>
         </select>
       </div>
       <div>
         <label>Dizi</label>
         <select name='sequence'>
-          <option value='S1'>S1</option>
-          <option value='S2' selected>S2</option>
+          <option value='S1' selected>S1</option>
+          <option value='S2'>S2</option>
             </select>
           </div>
           <div>
@@ -196,8 +205,8 @@ def render_dc_index() -> bytes:
           <div>
             <label>Girdi TZ</label>
             <select name='input_tz'>
-              <option value='UTC-5' selected>UTC-5</option>
-              <option value='UTC-4'>UTC-4</option>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
             </select>
           </div>
         </div>
@@ -230,15 +239,15 @@ def render_matrix_index() -> bytes:
           <div>
             <label>Girdi TZ</label>
             <select name='input_tz'>
-              <option value='UTC-5' selected>UTC-5</option>
-              <option value='UTC-4'>UTC-4</option>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
             </select>
           </div>
           <div>
             <label>Dizi</label>
             <select name='sequence'>
-              <option value='S1'>S1</option>
-              <option value='S2' selected>S2</option>
+              <option value='S1' selected>S1</option>
+              <option value='S2'>S2</option>
             </select>
           </div>
         </div>
@@ -268,15 +277,15 @@ def render_iou_index() -> bytes:
           <div>
             <label>Girdi TZ</label>
             <select name='input_tz'>
-              <option value='UTC-5' selected>UTC-5</option>
-              <option value='UTC-4'>UTC-4</option>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
             </select>
           </div>
           <div>
             <label>Dizi</label>
             <select name='sequence'>
-              <option value='S1'>S1</option>
-              <option value='S2' selected>S2</option>
+              <option value='S1' selected>S1</option>
+              <option value='S2'>S2</option>
             </select>
           </div>
           <div>
@@ -290,7 +299,7 @@ def render_iou_index() -> bytes:
         </div>
         <div class='row' style='margin-top:12px; gap:32px;'>
           <label style='display:flex; align-items:center; gap:8px;'>
-            <input type='checkbox' name='xyz_mode' />
+            <input type='checkbox' name='xyz_mode' checked />
             <span>XYZ kümesi (haber filtreli)</span>
           </label>
           <label style='display:flex; align-items:center; gap:8px;'>
@@ -309,6 +318,8 @@ def render_iou_index() -> bytes:
 
 
 class AppHandler(BaseHTTPRequestHandler):
+    server_version = "Candles321/1.0"
+    sys_version = ""
     def _parse_multipart(self) -> Dict[str, Any]:
         ct = self.headers.get("Content-Type", "")
         try:
@@ -357,6 +368,7 @@ class AppHandler(BaseHTTPRequestHandler):
             payload, content_type = asset
             self.send_response(200)
             self.send_header("Content-Type", content_type)
+            _add_security_headers(self)
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
@@ -371,6 +383,7 @@ class AppHandler(BaseHTTPRequestHandler):
             body = render_index()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        _add_security_headers(self)
         self.end_headers()
         self.wfile.write(body)
 
@@ -379,11 +392,29 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         try:
+            # Upload size guard
+            try:
+                length_hdr = int(self.headers.get("Content-Length", "0") or 0)
+            except Exception:
+                length_hdr = 0
+            if length_hdr > MAX_UPLOAD_BYTES:
+                self.send_response(413)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Upload too large (max 50 MB).")
+                return
             form = self._parse_multipart()
             file_field = form.get("csv") or {}
             files = [entry for entry in file_field.get("files", []) if entry.get("data") is not None]
             if not files:
                 raise ValueError("CSV yüklenmedi")
+            if len(files) > MAX_FILES:
+                self.send_response(413)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                _add_security_headers(self)
+                self.end_headers()
+                self.wfile.write(b"Too many files (max 25).")
+                return
 
             def decode_entry(entry: Dict[str, Any]) -> str:
                 raw = entry.get("data")
@@ -408,10 +439,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 if not candles:
                     raise ValueError("Veri boş veya çözümlenemedi")
 
-                sequence = (form.get("sequence", {}).get("value") or "S2").strip()
+                sequence = (form.get("sequence", {}).get("value") or "S1").strip()
                 offset_s = (form.get("offset", {}).get("value") or "0").strip()
                 show_dc = "show_dc" in form
-                tz_an = (form.get("input_tz", {}).get("value") or "UTC-5").strip()
+                tz_an = (form.get("input_tz", {}).get("value") or "UTC-4").strip()
 
                 candles, tz_label = apply_tz(candles, tz_an)
 
@@ -505,6 +536,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page("app321 sonuçlar", body, active_tab="analyze"))
                 return
@@ -515,7 +547,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 raise ValueError("Veri boş veya çözümlenemedi")
 
             if self.path == "/dc":
-                candles, tz_label = apply_tz(candles, (form.get("input_tz", {}).get("value") or "UTC-5").strip())
+                candles, tz_label = apply_tz(candles, (form.get("input_tz", {}).get("value") or "UTC-4").strip())
                 dc_flags = compute_dc_flags(candles)
                 rows_html = []
                 count = 0
@@ -538,13 +570,14 @@ class AppHandler(BaseHTTPRequestHandler):
                 body = info + table
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page("app321 DC List", body, active_tab="dc"))
                 return
 
             if self.path == "/matrix":
-                candles, tz_label = apply_tz(candles, (form.get("input_tz", {}).get("value") or "UTC-5").strip())
-                seq_mx = (form.get("sequence", {}).get("value") or "S2").strip()
+                candles, tz_label = apply_tz(candles, (form.get("input_tz", {}).get("value") or "UTC-4").strip())
+                seq_mx = (form.get("sequence", {}).get("value") or "S1").strip()
                 seq_values = SEQUENCES.get(seq_mx, SEQUENCES["S2"])[:]
                 base_idx, align_status = find_start_index(candles, dtime(hour=18, minute=0))
                 dc_flags = compute_dc_flags(candles)
@@ -595,13 +628,14 @@ class AppHandler(BaseHTTPRequestHandler):
                 body = info + table
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page("app321 - Matrix", body, active_tab="matrix"))
                 return
 
             # IOU branch
-            tz_value = (form.get("input_tz", {}).get("value") or "UTC-5").strip()
-            sequence = (form.get("sequence", {}).get("value") or "S2").strip()
+            tz_value = (form.get("input_tz", {}).get("value") or "UTC-4").strip()
+            sequence = (form.get("sequence", {}).get("value") or "S1").strip()
             limit_raw = (form.get("limit", {}).get("value") or "0").strip()
             tol_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
             try:
@@ -702,11 +736,7 @@ class AppHandler(BaseHTTPRequestHandler):
                             news_cell_html = prefix + "<br>" + "<br>".join(detail_lines)
                         else:
                             news_cell_html = "Yok"
-                        info_only_news = (
-                            not has_effective_news
-                            and any(cat in {"holiday", "all-day"} for cat in categories_present)
-                        )
-                        if xyz_enabled and not has_effective_news and not info_only_news:
+                        if xyz_enabled and not has_effective_news:
                             oc_abs = abs(hit.oc)
                             prev_abs = abs(hit.prev_oc)
                             if oc_abs > limit_margin or prev_abs > limit_margin:
@@ -791,6 +821,7 @@ class AppHandler(BaseHTTPRequestHandler):
             msg = html.escape(str(exc) or "Bilinmeyen hata")
             self.send_response(400)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            _add_security_headers(self)
             self.end_headers()
             self.wfile.write(page("Hata", f"<p>Hata: {msg}</p><p><a href='/'>&larr; Geri</a></p>"))
 

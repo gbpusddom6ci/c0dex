@@ -5,7 +5,7 @@ from datetime import datetime, time as dtime, timedelta
 from typing import List, Optional, Tuple, Dict, Callable
 
 
-MINUTES_PER_STEP = 96
+MINUTES_PER_STEP = 90
 DEFAULT_START_TOD = dtime(hour=18, minute=0)
 IOU_TOLERANCE = 0.005
 
@@ -30,9 +30,9 @@ def is_forbidden_dc_time(ts: datetime) -> bool:
     weekday = ts.weekday()
     if tod.hour == 18 and tod.minute == 0:
         return True
-    if tod.hour == 19 and tod.minute == 36 and weekday != 6:  # Sunday = 6
+    if tod.hour == 19 and tod.minute == 30 and weekday != 6:  # Sunday = 6
         return True
-    if weekday == 4 and tod.hour == 16 and tod.minute == 24:  # Friday
+    if weekday == 4 and tod.hour == 16 and tod.minute == 30:  # Friday
         return True
     return False
 
@@ -164,7 +164,7 @@ def compute_dc_flags(candles: List[Candle]) -> List[Optional[bool]]:
         within = min(prev.open, prev.close) <= cur.close <= max(prev.open, prev.close)
         cond = cur.high <= prev.high and cur.low >= prev.low and within
 
-        # Genel kurallar: belirli slotlar DC sayılmaz, ardışık DC engellenir.
+        # Genel kurallar: 18:00 / belirli slotlar DC sayılmaz, ardışık DC engellenir.
         if is_forbidden_dc_time(cur.ts):
             cond = False
 
@@ -627,8 +627,8 @@ def fmt_pip(delta: Optional[float]) -> str:
 
 def main(argv: Optional[List[str]] = None) -> int:
     p = argparse.ArgumentParser(
-        prog="app96.counter",
-        description="96m sayımı ve temel DC değerlendirmesi",
+        prog="app90.counter",
+        description="90m sayımı ve temel DC değerlendirmesi",
     )
     p.add_argument("--csv", required=True, help="CSV dosya yolu")
     p.add_argument("--sequence", choices=list(SEQUENCES.keys()), default="S2", help="Kullanılacak dizi: S1 veya S2")

@@ -1,6 +1,6 @@
 # C0dex Çoklu Timeframe Analiz Paketi
 
-Bu depo; **app48**, **app72**, **app80**, **app96**, **app120** ve **app321** olmak üzere altı farklı timeframe uygulamasını ve ortak araçları bir araya getirir. Her uygulama CSV verisini okur, zaman damgalarını normalize eder, distorted candle (DC) işaretler, sequence ve offset hizalamalarını kurar ve hem CLI hem de hafif web arayüzleri üzerinden IOU/IOV signal scan sonuçlarını sunar.
+Bu depo; **app48**, **app72**, **app80**, **app90**, **app96**, **app120** ve **app321** olmak üzere yedi farklı timeframe uygulamasını ve ortak araçları bir araya getirir. Her uygulama CSV verisini okur, zaman damgalarını normalize eder, distorted candle (DC) işaretler, sequence ve offset hizalamalarını kurar ve hem CLI hem de hafif web arayüzleri üzerinden IOU/IOV signal scan sonuçlarını sunar.
 
 Destekleyici paketler: `appsuite` tüm uygulamaları tek host altında bir reverse proxy ile sunar, `landing` basit bir giriş sayfası sağlar, `calendar_md` Markdown ekonomik takvimlerini JSON’a çevirir, `favicon` ortak varlıkları barındırır. Amaç; bu repo dışına çıkmadan sistemi anlamak ve çalıştırmak için gereken her şeyi tek yerde toplamaktır.
 
@@ -38,6 +38,7 @@ Destekleyici paketler: `appsuite` tüm uygulamaları tek host altında bir rever
 app48/      48 dakikalık analiz paketi (CLI + web)
 app72/      72 dakikalık analiz paketi
 app80/      80 dakikalık analiz paketi
+app90/      90 dakikalık analiz paketi
 app96/      96 dakikalık analiz paketi
 app120/     120 dakikalık analiz paketi
 app321/     60 dakikalık analiz paketi
@@ -64,7 +65,8 @@ Her timeframe klasörü benzer bir kalıbı izler:
 | app48    | 48 dk     | 2020 | 12→48     | Synthetic 18:00 & 18:48; 18:00/18:48/19:36 DC & IOU dışında |
 | app72    | 72 dk     | 2172 | 12→72     | 18:00, 19:12, 20:24 DC olamaz; ilk haftanın Cuma 16:48 IOU dışında |
 | app80    | 80 dk     | 2180 | 20→80     | 18:00, 19:20, 20:40 ve tüm Cuma 16:40 DC & IOU dışında |
-| app96    | 96 dk     | 2196 | 12→96     | Genel kural: 18:00 DC/IOU dışında; özel istisnalar ileride tanımlanacak |
+| app90    | 90 dk     | 2190 | 30→90     | 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 DC & IOU dışında |
+| app96    | 96 dk     | 2196 | 12→96     | 18:00, (Pazar hariç) 19:36 ve Cuma 16:24 DC & IOU dışında |
 | app120   | 120 dk    | 2120 | 60→120    | 18:00 DC & IOU dışında; Pazar hariç 20:00 ve tüm Cuma 16:00 hariç |
 | app321   | 60 dk     | 2019 | —         | Pazar dışı 20:00 DC olamaz; 18:00/19:00/20:00 IOU dışında |
 | appsuite | —         | 2100 | —         | Tüm uygulamalar reverse proxy arkasında |
@@ -93,7 +95,8 @@ Tüm web arayüzleri multi-file CSV upload destekler; IOU/IOV sekmeleri ve dosya
 - **app48:** 13:12–19:36 arası DC sayılmaz (normal kabul); synthetic 18:00 ve 18:48 candle’lar DC değildir.
 - **app72:** 18:00, 19:12, 20:24 ve Cuma 16:00 DC olamaz.
 - **app80:** 18:00, 19:20, 20:40 ve tüm Cuma 16:40 DC olamaz.
-- **app96:** Şimdilik yalnızca genel kural uygulanır (18:00 DC değildir).
+- **app90:** 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 DC olamaz.
+- **app96:** 18:00, (Pazar hariç) 19:36 ve Cuma 16:24 DC olamaz.
 - **app120:** 18:00 ve Cuma 16:00 DC değildir; 20:00 yalnızca Pazar günleri DC değerlendirilebilir (diğer günler hariç tutulur).
 - **app321:** Pazar hariç 20:00 DC olamaz; ayrıca 13:00–20:00 arası (hafta içi) DC’ler normal kabul edilir.
 
@@ -106,7 +109,8 @@ Her IOU taraması aşağıdaki zamanları doğrudan hariç tutar:
 - **app48:** 18:00, 18:48, 19:36
 - **app72:** 18:00, 19:12, 20:24 ve iki haftalık verinin ilk haftası Cuma 16:48
 - **app80:** 18:00, 19:20, 20:40 ve tüm Cuma 16:40
-- **app96:** 18:00 (şimdilik genel kural)
+- **app90:** 18:00, (Pazar hariç) 19:30 ve Cuma 16:30
+- **app96:** 18:00, (Pazar hariç) 19:36 ve Cuma 16:24
 - **app120:** 18:00, Pazar hariç 20:00 ve tüm Cuma 16:00
 - **app321:** 18:00, 19:00, 20:00
 
@@ -141,11 +145,11 @@ Tüm IOU sekmeleri `economic_calendar/` altındaki JSON takvimleri `news_loader.
   - `all-day`: tatil olmayan tüm gün etkinlikleri (örn. OPEC, German Prelim CPI)
   - `speech`: saati olan ve `actual=null` olan konuşmalar
   - `normal`: standart veri açıklamaları
-- `holiday` ve `all-day` sadece bilgilendirme amaçlıdır; XYZ elemesini tetiklemez.
+- `holiday` ve `all-day` yalnız bilgilendirme amaçlıdır; XYZ filtresi bu kayıtları haber kabul etmez ve bu kategorileri içeren hit’ler offseti kümenin dışına iter.
 - `recent_null=true` olan kayıtlar `(null)` ekiyle gösterilir.
 - app72’de 16:48/18:00/19:12/20:24 özel slotları, haber olmasa da korunur.
 
-XYZ filtresi, haber bulunmayan ve slotla korunmayan offset’leri eler; holiday / all-day satırlar kalır ama bilgi etiketiyle gösterilir.
+XYZ filtresi, haber bulunmayan (ve slotla korunmayan) offset’leri eler; holiday / all-day satırlar yalnızca bilgi olarak görünür ve offset’i filtre dışına çıkarır.
 
 ---
 
@@ -167,6 +171,7 @@ python3 -m appsuite.web     --host 0.0.0.0 --port 2100
 python3 -m app48.web        --host 0.0.0.0 --port 2020
 python3 -m app72.web        --host 0.0.0.0 --port 2172
 python3 -m app80.web        --host 0.0.0.0 --port 2180
+python3 -m app90.web        --host 0.0.0.0 --port 2190
 python3 -m app96.web        --host 0.0.0.0 --port 2196
 python3 -m app120.web       --host 0.0.0.0 --port 2120
 python3 -m app321.web       --host 0.0.0.0 --port 2019
@@ -186,6 +191,9 @@ python3 -m app120 --csv 60m.csv --input-tz UTC-5 --output 120m.csv
 
 # app80 IOU scan with custom thresholds
 python3 -m app80.counter --csv data.csv --sequence S1 --scan-iou --limit 0.08 --tolerance 0.005
+
+# app90 30 → 90 minute converter
+python3 -m app90.main --csv 30m.csv --input-tz UTC-5 --output 90m.csv
 
 # app96 temel IOU taraması
 python3 -m app96.counter --csv data.csv --sequence S2 --offset 0 --show-dc
