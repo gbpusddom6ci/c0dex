@@ -849,11 +849,11 @@ class AppHandler(BaseHTTPRequestHandler):
                     f"</div>"
                 )
                 body = info + table
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        _add_security_headers(self)
-        self.end_headers()
-        self.wfile.write(page("app48 DC List", body, active_tab="dc"))
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
+                self.end_headers()
+                self.wfile.write(page("app48 DC List", body, active_tab="dc"))
             elif self.path == "/matrix":
                 # Matrix branch
                 seq_values = SEQUENCES.get(sequence or "S2", SEQUENCES["S2"])[:]
