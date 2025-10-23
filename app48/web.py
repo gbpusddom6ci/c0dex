@@ -818,6 +818,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 body = "<div class='card'>" + "".join(info_lines) + "</div>" + table
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page("app48 sonuçlar", body, active_tab="analyze"))
             elif self.path == "/dc":
