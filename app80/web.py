@@ -31,12 +31,14 @@ from .main import (
 from email.parser import BytesParser
 from email.policy import default as email_default
 from datetime import timedelta, time as dtime
+from zipfile import ZipFile, ZIP_DEFLATED
+from typing import Tuple
 
 from news_loader import find_news_for_timestamp
 
 IOU_TOLERANCE = 0.005
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
-MAX_FILES = 25
+MAX_FILES = 50
 
 def _add_security_headers(handler: BaseHTTPRequestHandler) -> None:
     handler.send_header("X-Content-Type-Options", "nosniff")
@@ -290,13 +292,14 @@ def render_converter_index() -> bytes:
     <div class='card'>
       <form method='post' action='/converter' enctype='multipart/form-data'>
         <label>CSV (20m, UTC-5)</label>
-        <input type='file' name='csv' accept='.csv,text/csv' required />
+        <input type='file' name='csv' accept='.csv,text/csv' required multiple />
         <div style='margin-top:12px;'>
           <button type='submit'>80m'e Dönüştür</button>
         </div>
       </form>
     </div>
-    <p>Girdi UTC-5 20 dakikalık mumlar olmalıdır. Çıktı UTC-4 80 dakikalık mumlar olarak indirilir (4 tane 20m = 1 tane 80m).</p>
+    <p>Girdi UTC-5 20 dakikalık mumlar olmalıdır. Çıktı UTC-4 80 dakikalık mumlar olarak indirilir (4 × 20m = 1 × 80m).</p>
+    <p>Birden fazla CSV seçersen her biri 80m'e dönüştürülür; birden fazla dosya seçildiğinde sonuçlar ZIP paketi olarak indirilir.</p>
     """
     return page("app80 - Converter", body, active_tab="converter")
 
@@ -457,40 +460,80 @@ class App80Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
                 _add_security_headers(self)
                 self.end_headers()
-                self.wfile.write(b"Too many files (max 25).")
+                self.wfile.write(b"Too many files (max 50).")
                 return
 
             if self.path == "/converter":
-                candles = load_candles_from_text(text, ConverterCandle)
-                if not candles:
-                    raise ValueError("Veri boş veya çözümlenemedi")
-                tf_est = estimate_timeframe_minutes(candles)
-                if tf_est is None or abs(tf_est - 20) > 1.0:
-                    raise ValueError("Girdi 20 dakikalık akış gibi görünmüyor")
-                shifted, _ = adjust_to_output_tz(candles, "UTC-5")
-                converted = convert_20m_to_80m(shifted)
+                outputs: List[Tuple[str, bytes]] = []
+                used_names: set[str] = set()
 
-                buffer = io.StringIO()
-                writer = csv.writer(buffer)
-                writer.writerow(["Time", "Open", "High", "Low", "Close"])
-                for c in converted:
-                    writer.writerow([
-                        c.ts.strftime("%Y-%m-%d %H:%M:%S"),
-                        format_price(c.open),
-                        format_price(c.high),
-                        format_price(c.low),
-                        format_price(c.close),
-                    ])
-                data = buffer.getvalue().encode("utf-8")
-                filename = file_obj.get("filename") or "converted"
-                download_name = _sanitize_csv_filename(filename, "_80m.csv")
+                for entry in files_list:
+                    entry_data = entry.get("data")
+                    if isinstance(entry_data, (bytes, bytearray)):
+                        text_entry = entry_data.decode("utf-8", errors="replace")
+                    else:
+                        text_entry = str(entry_data)
+                    try:
+                        candles_entry = load_candles_from_text(text_entry, ConverterCandle)
+                    except ValueError as exc:
+                        name = entry.get("filename") or "dosya"
+                        raise ValueError(f"{name}: {exc}")
+                    if not candles_entry:
+                        name = entry.get("filename") or "dosya"
+                        raise ValueError(f"{name}: Veri boş veya çözümlenemedi")
+                    tf_est = estimate_timeframe_minutes(candles_entry)
+                    if tf_est is None or abs(tf_est - 20) > 1.0:
+                        name = entry.get("filename") or "dosya"
+                        raise ValueError(f"{name}: Girdi 20 dakikalık akış gibi görünmüyor")
+                    shifted, _ = adjust_to_output_tz(candles_entry, "UTC-5")
+                    converted = convert_20m_to_80m(shifted)
+
+                    buffer = io.StringIO()
+                    writer = csv.writer(buffer)
+                    writer.writerow(["Time", "Open", "High", "Low", "Close"])
+                    for c in converted:
+                        writer.writerow([
+                            c.ts.strftime("%Y-%m-%d %H:%M:%S"),
+                            format_price(c.open),
+                            format_price(c.high),
+                            format_price(c.low),
+                            format_price(c.close),
+                        ])
+                    data_bytes = buffer.getvalue().encode("utf-8")
+                    download_name = _sanitize_csv_filename(entry.get("filename") or "converted", "_80m.csv")
+                    counter = 1
+                    while download_name in used_names:
+                        stem, ext = (download_name.rsplit(".", 1) + [""])[:2]
+                        download_name = (stem[:100] or "converted") + f"_{counter}." + (ext or "csv")
+                        counter += 1
+                    used_names.add(download_name)
+                    outputs.append((download_name, data_bytes))
+
+                if len(outputs) == 1:
+                    download_name, data_bytes = outputs[0]
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/csv; charset=utf-8")
+                    self.send_header("Content-Disposition", f'attachment; filename="{download_name}"')
+                    self.send_header("Content-Length", str(len(data_bytes)))
+                    _add_security_headers(self)
+                    self.end_headers()
+                    self.wfile.write(data_bytes)
+                    return
+
+                bundle = io.BytesIO()
+                with ZipFile(bundle, "w", ZIP_DEFLATED) as zf:
+                    for name, payload in outputs:
+                        zf.writestr(name, payload)
+                zip_bytes = bundle.getvalue()
+                bundle_name = "converted_80m_bundle.zip"
 
                 self.send_response(200)
-                self.send_header("Content-Type", "text/csv; charset=utf-8")
-                self.send_header("Content-Disposition", f"attachment; filename=\"{download_name}\"")
+                self.send_header("Content-Type", "application/zip")
+                self.send_header("Content-Disposition", f'attachment; filename="{bundle_name}"')
+                self.send_header("Content-Length", str(len(zip_bytes)))
                 _add_security_headers(self)
                 self.end_headers()
-                self.wfile.write(data)
+                self.wfile.write(zip_bytes)
                 return
 
             if self.path == "/iou":

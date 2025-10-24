@@ -38,7 +38,7 @@ from news_loader import find_news_for_timestamp
 
 IOU_TOLERANCE = 0.005
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
-MAX_FILES = 25
+MAX_FILES = 50
 
 def _add_security_headers(handler: BaseHTTPRequestHandler) -> None:
     handler.send_header("X-Content-Type-Options", "nosniff")
@@ -460,7 +460,7 @@ class App72Handler(BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
                 _add_security_headers(self)
                 self.end_headers()
-                self.wfile.write(b"Too many files (max 25).")
+                self.wfile.write(b"Too many files (max 50).")
                 return
 
             def decode_entry(entry: Dict[str, Any]) -> str:
