@@ -119,6 +119,7 @@ DC condition: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` within prev `[Op
 - **IOV**: Opposite-sign OC/PrevOC pairs above limit (app120 only)
 - **Tolerance**: Default ±0.005, configurable in web forms
 - **XYZ Filter**: Optional news-based filtering excluding non-news offsets
+- **app120 IOU exception**: 14:00 and 16:00 (UTC-4) are excluded from IOU detection and do not participate in XYZ elimination.
 
 ## Important Notes
 
