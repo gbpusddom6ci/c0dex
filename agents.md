@@ -11,7 +11,6 @@ Bu rehber, projedeki tüm alt uygulamaları (app321, app48, app72, app80, app120
 - **2025-07 – app120 birleşik web arayüzü:** 120m analiz, DC listesi, offset matrisi ve 60→120 converter tek arayüzde birleştirildi.
 - **2025-09 – IOU XYZ filtresi & haber entegrasyonu:** Tüm IOU sekmelerine opsiyonel XYZ filtresi eklendi; tatiller, all-day haberler ve app72’nin 16:48/18:00/19:12/20:24 slotları özel olarak ele alınır.
 - **2025-10 – IOU tolerans parametresi:** IOU taramaları için ± tolerans alanı eklendi; varsayılan 0.005 olup UI’dan değiştirilebilir. Sinyaller ancak `|OC|` ve `|PrevOC|` değerleri `limit + tolerans` eşiğini aştığında listelenir.
-- **2025-10 – app120 IOU özel kuralı:** IOU’da 14:00 ve 16:00 (UTC-4) mumları asla raporlanmaz ve XYZ elemesine katılmaz.
 - **2025-06 – app80 & app72 converter’ları:** 20→80 ve 12→72 dakikalık dönüştürücüler web ve CLI olarak eklendi.
 - **2025-05 – app48 sentetik mum desteği:** Piyasa kapanış aralığını korumak için 18:00 ve 18:48 sentetik mumları eklendi.
 - **Daha eski çekirdek:** app321 (60m) sayımı, DC tespiti, offset matrisi ve tahmin desteği.
@@ -139,7 +138,6 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
   python3 -m app120.counter --csv data.csv --predict 37
   python3 -m app120 --csv 60m.csv --input-tz UTC-5 --output 120m.csv
   ```
-- **IOU Özel Kuralı (app120):** IOU’da 14:00 ve 16:00 (UTC-4) mumları asla raporlanmaz ve XYZ elemesine katılmaz.
 - **IOV/IOU Limit Mantığı:** Limit mutlak değerdir (0.1 → `|OC| ≥ 0.1`). Limit negatif girilirse `abs(limit)` alınır. Limit=0 durumunda sadece sıfır olmayan değerler eşik üstü kabul edilir.
 - **Çoklu Dosya Akışı:** Formdaki tüm CSV’ler aynı sequence/limit/TZ ile işlenir; her dosya için veri kapsamı, offset özetleri ve tablolar ayrı kartlarda sunulur.
 

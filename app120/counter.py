@@ -8,7 +8,6 @@ from typing import List, Optional, Tuple, Dict, Callable, Set
 MINUTES_PER_STEP = 120
 DEFAULT_START_TOD = dtime(hour=18, minute=0)
 IOU_TOLERANCE = 0.005
-IOU_FORBIDDEN_TIMES = {dtime(hour=14, minute=0), dtime(hour=16, minute=0)}
 FORBIDDEN_TIMES_ALWAYS = {
     dtime(hour=18, minute=0),
 }
@@ -671,9 +670,6 @@ def detect_iou_candles(
         filtered_hits: List[SignalHit] = []
         for hit in offset.hits:
             if should_exclude_for_signals(hit.ts, sunday_dates):
-                continue
-            # IOU-specific exclusion: 14:00 and 16:00 candles never qualify and are not considered in XYZ
-            if hit.ts.time() in IOU_FORBIDDEN_TIMES:
                 continue
             filtered_hits.append(hit)
         offset.hits = filtered_hits
