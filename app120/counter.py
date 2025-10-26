@@ -671,6 +671,9 @@ def detect_iou_candles(
         for hit in offset.hits:
             if should_exclude_for_signals(hit.ts, sunday_dates):
                 continue
+            # IOU-specific: 20:00 candles are never eligible (including Sundays)
+            if hit.ts.time() == dtime(hour=20, minute=0):
+                continue
             filtered_hits.append(hit)
         offset.hits = filtered_hits
     return report

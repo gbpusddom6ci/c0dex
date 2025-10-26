@@ -383,7 +383,7 @@ def render_iou_index() -> bytes:
       </form>
     </div>
     <p>IOU mumlar, limit üzerindeki OC ve PrevOC değerlerinin aynı işareti paylaştığı durumlarda raporlanır. Aynı anda birden fazla CSV seçebilirsin.</p>
-    <p><strong>Not:</strong> 18:00 mumları IOU üretmez; 20:00 mumları yalnızca veri setindeki Pazar günlerinde IOU olabilir. Cuma 16:00 mumları IOU sonuçlarından hariç tutulur.</p>
+    <p><strong>Not:</strong> 18:00 mumları IOU üretmez; 20:00 mumları IOU olamaz. Cuma 16:00 mumları IOU sonuçlarından hariç tutulur.</p>
     """
     return page("app120 - IOU", body, active_tab="iou")
 
