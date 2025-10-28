@@ -150,17 +150,14 @@ def _compute_pattern_analysis(pattern_entries: List[Dict[str, Any]]) -> Dict[str
             continue
         next_branches: Set[PatternBranch] = set()
         for branch in branches:
-            progressed_any = False
             for offset in offsets:
                 progressed = _step_pattern_branch(branch, offset)
                 if progressed is None:
                     continue
-                progressed_any = True
                 next_branches.add(progressed)
-            if not progressed_any:
-                next_branches.add(branch)
-        next_branches.add(initial)
         branches = next_branches
+        if not branches:
+            break
 
     sequences: Set[Tuple[int, ...]] = {
         branch.sequence
