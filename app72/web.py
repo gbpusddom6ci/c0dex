@@ -41,155 +41,210 @@ IOU_TOLERANCE = 0.005
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_FILES = 50
 
-ALLOWED_START_ABS = {1, 3}
+PATTERN_SEQUENCES: Dict[Tuple[int, str], Tuple[int, int, int]] = {
+    (1, "asc"): (1, 2, 3),
+    (1, "desc"): (3, 2, 1),
+    (-1, "asc"): (-1, -2, -3),
+    (-1, "desc"): (-3, -2, -1),
+}
 
 
 @dataclass(frozen=True)
-class PatternBranch:
-    sequence: Tuple[int, ...]
-    block_sign: Optional[int]
-    direction: Optional[str]
-    progress: Tuple[int, ...]
-    awaiting_zero: bool
+class PatternState:
+    sign: int
+    direction: str
+    values: Tuple[int, ...]
+    indices: Tuple[int, ...]
 
 
-def _format_pattern_sequence(sequence: Tuple[int, ...]) -> str:
-    parts: List[str] = []
-    for value in sequence:
-        if value == 0:
-            parts.append("0")
+@dataclass(frozen=True)
+class PatternResult:
+    sign: int
+    direction: str
+    values: Tuple[int, ...]
+    indices: Tuple[int, ...]
+
+
+def _format_sequence(values: Tuple[int, ...]) -> str:
+    return " -> ".join(f"{v:+d}" for v in values)
+
+
+def _unique_preserve(values: List[Tuple[int, ...]]) -> List[Tuple[int, ...]]:
+    seen: Set[Tuple[int, ...]] = set()
+    ordered: List[Tuple[int, ...]] = []
+    for item in values:
+        if item in seen:
             continue
-        parts.append(f"{value:+d}")
-    return ", ".join(parts)
+        seen.add(item)
+        ordered.append(item)
+    return ordered
 
 
-def _expected_next_abs(progress: Tuple[int, ...], direction: str) -> Optional[int]:
-    if len(progress) == 1:
-        return 2
-    if len(progress) == 2:
-        return 3 if direction == "asc" else 1
-    return None
+def _compute_pattern_results(segment_entries: List[Dict[str, Any]]) -> List[PatternResult]:
+    states: Set[PatternState] = set()
+    completed: Dict[Tuple[int, str, Tuple[int, ...]], PatternResult] = {}
+
+    for entry in segment_entries:
+        idx: int = entry["index"]
+        offsets: Set[int] = entry["offsets"]
+
+        # carry existing states that are still incomplete
+        next_states: Set[PatternState] = set()
+        for state in states:
+            template = PATTERN_SEQUENCES[(state.sign, state.direction)]
+            if len(state.values) < len(template):
+                next_states.add(state)
+
+        # start new states if allowable starting values exist in this entry
+        for (sign, direction), template in PATTERN_SEQUENCES.items():
+            start_val = template[0]
+            if start_val in offsets:
+                next_states.add(PatternState(sign=sign, direction=direction, values=(start_val,), indices=(idx,)))
+
+        # extend existing states when expected value appears later in the sequence
+        for state in states:
+            template = PATTERN_SEQUENCES[(state.sign, state.direction)]
+            need_pos = len(state.values)
+            if need_pos >= len(template):
+                continue
+            expected_val = template[need_pos]
+            if expected_val in offsets and idx > state.indices[-1]:
+                new_values = state.values + (expected_val,)
+                new_indices = state.indices + (idx,)
+                if len(new_values) == len(template):
+                    key = (state.sign, state.direction, new_indices)
+                    if key not in completed:
+                        completed[key] = PatternResult(
+                            sign=state.sign,
+                            direction=state.direction,
+                            values=new_values,
+                            indices=new_indices,
+                        )
+                else:
+                    next_states.add(
+                        PatternState(
+                            sign=state.sign,
+                            direction=state.direction,
+                            values=new_values,
+                            indices=new_indices,
+                        )
+                    )
+
+        states = next_states
+
+    return list(completed.values())
 
 
-def _step_pattern_branch(branch: PatternBranch, offset: int) -> Optional[PatternBranch]:
-    sequence = branch.sequence + (offset,)
-    if offset == 0:
-        if branch.awaiting_zero:
-            return PatternBranch(
-                sequence=sequence,
-                block_sign=None,
-                direction=None,
-                progress=(),
-                awaiting_zero=False,
+def _render_pattern_list(results: List[PatternResult], entries: List[Dict[str, Any]]) -> str:
+    if not results:
+        return "<p>Yok</p>"
+    items: List[str] = []
+    for result in results:
+        seq_text = _format_sequence(result.values)
+        file_trace = " -> ".join(
+            f"{entries[idx]['name']} (#{idx + 1})" for idx in result.indices
+        )
+        items.append(
+            "<li><strong>{}</strong><br><small>{}</small></li>".format(
+                html.escape(seq_text),
+                html.escape(file_trace) if file_trace else "-"
             )
-        return None
-
-    if branch.awaiting_zero:
-        return None
-
-    sign = 1 if offset > 0 else -1
-    abs_val = abs(offset)
-
-    if branch.block_sign is None:
-        if abs_val not in ALLOWED_START_ABS:
-            return None
-        direction = "asc" if abs_val == 1 else "desc"
-        return PatternBranch(
-            sequence=sequence,
-            block_sign=sign,
-            direction=direction,
-            progress=(abs_val,),
-            awaiting_zero=False,
         )
+    return "<ul>" + "".join(items) + "</ul>"
 
-    if sign != branch.block_sign or branch.direction is None:
-        return None
 
-    expected = _expected_next_abs(branch.progress, branch.direction)
-    if expected is None or abs_val != expected:
-        return None
-
-    progress = branch.progress + (abs_val,)
-    if len(progress) == 3:
-        return PatternBranch(
-            sequence=sequence,
-            block_sign=None,
-            direction=None,
-            progress=(),
-            awaiting_zero=True,
-        )
-
-    return PatternBranch(
-        sequence=sequence,
-        block_sign=branch.block_sign,
-        direction=branch.direction,
-        progress=progress,
-        awaiting_zero=False,
-    )
+def _summarize_combined_label(positive: List[PatternResult], negative: List[PatternResult]) -> str:
+    if positive and negative:
+        return "-+3, -+2, -+1"
+    if positive:
+        seqs = _unique_preserve([res.values for res in positive])
+        formatted = [" -> ".join(f"{v:+d}" for v in seq) for seq in seqs]
+        return " / ".join(formatted)
+    if negative:
+        seqs = _unique_preserve([res.values for res in negative])
+        formatted = [" -> ".join(f"{v:+d}" for v in seq) for seq in seqs]
+        return " / ".join(formatted)
+    return "-"
 
 
 def _compute_pattern_analysis(pattern_entries: List[Dict[str, Any]]) -> Dict[str, Any]:
     if not pattern_entries:
         return {
-            "sequences": [],
+            "segments": [],
             "warnings": ["Örüntü analizi için en az bir CSV gerekir."],
         }
 
-    initial = PatternBranch(
-        sequence=(),
-        block_sign=None,
-        direction=None,
-        progress=(),
-        awaiting_zero=False,
-    )
-    branches: Set[PatternBranch] = {initial}
+    zero_indices = [idx for idx, entry in enumerate(pattern_entries) if 0 in entry["offsets_set"]]
+    if len(zero_indices) < 2:
+        return {
+            "segments": [],
+            "warnings": ["Örüntü çıkarabilmek için en az iki adet 0 içeren CSV yüklenmeli."],
+        }
 
-    for entry in pattern_entries:
-        offsets = entry.get("offsets_set") or set(entry.get("offsets", []))
-        if not offsets:
-            continue
-        next_branches: Set[PatternBranch] = set()
-        for branch in branches:
-            for offset in offsets:
-                progressed = _step_pattern_branch(branch, offset)
-                if progressed is None:
-                    continue
-                next_branches.add(progressed)
-        branches = next_branches
-        if not branches:
-            break
+    segments: List[Dict[str, Any]] = []
+    for seg_idx, start_zero_idx in enumerate(zero_indices[:-1]):
+        end_zero_idx = zero_indices[seg_idx + 1]
+        segment_entries: List[Dict[str, Any]] = []
+        for idx in range(start_zero_idx, end_zero_idx):
+            offsets_list = [o for o in pattern_entries[idx]["offsets"] if o != 0]
+            segment_entries.append(
+                {
+                    "index": idx,
+                    "name": pattern_entries[idx]["name"],
+                    "offsets": set(offsets_list),
+                }
+            )
+        patterns = _compute_pattern_results(segment_entries)
+        segments.append(
+            {
+                "start_zero_index": start_zero_idx,
+                "end_zero_index": end_zero_idx,
+                "start_zero_name": pattern_entries[start_zero_idx]["name"],
+                "end_zero_name": pattern_entries[end_zero_idx]["name"],
+                "entries": segment_entries,
+                "patterns": patterns,
+            }
+        )
 
-    sequences: Set[Tuple[int, ...]] = {
-        branch.sequence
-        for branch in branches
-        if branch.sequence
-        and branch.block_sign is None
-        and not branch.awaiting_zero
-        and branch.sequence[-1] == 0
-    }
-
-    warnings: List[str] = []
-    if not sequences:
-        warnings.append("Kurallara uygun örüntü bulunamadı.")
-
-    ordered = sorted(sequences, key=lambda seq: (len(seq), seq))
-    return {"sequences": ordered, "warnings": warnings}
+    return {"segments": segments, "warnings": []}
 
 
-def _render_pattern_analysis(analysis: Dict[str, Any]) -> str:
+def _render_pattern_analysis(pattern_entries: List[Dict[str, Any]], analysis: Dict[str, Any]) -> str:
     parts: List[str] = ["<div class='card'><h3>Örüntü Analizi</h3>"]
-    sequences = analysis.get("sequences") or []
     warnings = analysis.get("warnings") or []
+    segments = analysis.get("segments") or []
 
-    if sequences:
-        parts.append(f"<p><strong>Örüntü sayısı:</strong> {len(sequences)}</p>")
-        parts.append("<ol>")
-        for seq in sequences:
-            parts.append(f"<li><code>{html.escape(_format_pattern_sequence(seq))}</code></li>")
-        parts.append("</ol>")
+    if warnings:
+        for warning in warnings:
+            parts.append(f"<p>{html.escape(warning)}</p>")
 
-    for warning in warnings:
-        parts.append(f"<p>{html.escape(warning)}</p>")
+    if not segments:
+        parts.append("</div>")
+        return "".join(parts)
+
+    for idx, segment in enumerate(segments, start=1):
+        positive = [res for res in segment["patterns"] if res.sign == 1]
+        negative = [res for res in segment["patterns"] if res.sign == -1]
+        combined_label = _summarize_combined_label(positive, negative)
+
+        range_labels = ", ".join(
+            f"{pattern_entries[i]['name']} (#{i + 1})"
+            for i in range(segment["start_zero_index"], segment["end_zero_index"] + 1)
+        )
+        parts.append("<div style='padding:8px 0;border-top:1px solid #ddd;'>")
+        parts.append(f"<strong>Segment {idx}:</strong> 0 başlangıcı {html.escape(segment['start_zero_name'])} (#{segment['start_zero_index'] + 1}), "
+                     f"0 bitişi {html.escape(segment['end_zero_name'])} (#{segment['end_zero_index'] + 1})")
+        parts.append(f"<div><strong>Dosya aralığı:</strong> {html.escape(range_labels) if range_labels else '-'}</div>")
+        parts.append(f"<div><strong>Kombine örüntü:</strong> {html.escape(combined_label)}</div>")
+        parts.append("<div><strong>Pozitif örüntüler:</strong></div>")
+        parts.append(_render_pattern_list(positive, pattern_entries))
+        parts.append("<div><strong>Negatif örüntüler:</strong></div>")
+        parts.append(_render_pattern_list(negative, pattern_entries))
+
+        has_offsets = any(entry["offsets"] for entry in segment["entries"])
+        if not has_offsets:
+            parts.append("<p>Bu segmentte 0 dışındaki offset bulunmadı.</p>")
+        parts.append("</div>")
 
     parts.append("</div>")
     return "".join(parts)
@@ -883,7 +938,7 @@ class App72Handler(BaseHTTPRequestHandler):
                 pattern_html = ""
                 if pattern_mode:
                     analysis = _compute_pattern_analysis(pattern_entries)
-                    pattern_html = _render_pattern_analysis(analysis)
+                    pattern_html = _render_pattern_analysis(pattern_entries, analysis)
 
                 if summary_mode:
                     header = "<tr><th>Dosya</th><th>XYZ Kümesi</th><th>Elenen Offsetler</th></tr>"
