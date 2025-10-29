@@ -545,8 +545,20 @@ def render_pattern_panel(xyz_sets: List[Set[int]], allow_zero_after_start: bool)
     for seq in patterns:
         label = ", ".join(_fmt_off(v) for v in seq)
         lines.append(f"<div>{html.escape(label)}</div>")
+    # Son değerlerin özeti (benzersiz, sıralı)
+    last_vals = [seq[-1] for seq in patterns if seq]
+    order = { -3:0, -2:1, -1:2, 0:3, 1:4, 2:5, 3:6 }
+    unique_last_sorted = []
+    seen = set()
+    for v in sorted(last_vals, key=lambda x: order.get(x, 99)):
+        if v not in seen:
+            seen.add(v)
+            unique_last_sorted.append(v)
+    last_line = "<div><strong>Son değerler:</strong> " + (
+        ", ".join(_fmt_off(v) for v in unique_last_sorted) if unique_last_sorted else "-"
+    ) + "</div>"
     info = f"<div><strong>Toplam örüntü:</strong> {len(patterns)} (ilk {min(len(patterns), PATTERN_MAX_PATHS)})</div>"
-    return "<div class='card'><h3>Örüntüleme</h3>" + info + "".join(lines) + "</div>"
+    return "<div class='card'><h3>Örüntüleme</h3>" + info + last_line + "".join(lines) + "</div>"
 
 
 def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]]:
