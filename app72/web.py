@@ -1051,7 +1051,13 @@ class App72Handler(BaseHTTPRequestHandler):
                                 if category in {"normal", "speech"}:
                                     has_effective_news = True
                                 detail_lines.append(line)
-                            slot_protected = hit.ts.time() in SPECIAL_SLOT_TIMES
+                            slot_time = hit.ts.time()
+                            slot_protected = False
+                            if slot_time in SPECIAL_SLOT_TIMES:
+                                if slot_time in FRIDAY_ONLY_SPECIAL_SLOTS:
+                                    slot_protected = hit.ts.weekday() == 4  # Yalnız Cuma 16:48 kural slot
+                                else:
+                                    slot_protected = True
                             if slot_protected and not news_hits:
                                 has_effective_news = True
                                 detail_lines.append(f"Kural slot {hit.ts.strftime('%H:%M')}")
@@ -1419,8 +1425,11 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-SPECIAL_SLOT_TIMES = {
+
+FRIDAY_ONLY_SPECIAL_SLOTS = {
     dtime(hour=16, minute=48),
+}
+SPECIAL_SLOT_TIMES = FRIDAY_ONLY_SPECIAL_SLOTS | {
     dtime(hour=18, minute=0),
     dtime(hour=19, minute=12),
     dtime(hour=20, minute=24),
