@@ -955,7 +955,8 @@ class App72Handler(BaseHTTPRequestHandler):
                     # Önceki sonuçları da koru (eğer varsa)
                     if previous_results_html:
                         # previous_results_html zaten decode edilmiş durumda
-                        preserved.append(f"<input type='hidden' name='previous_results_html' value='{base64.b64encode(previous_results_html.encode(\"utf-8\")).decode(\"ascii\")}'>")
+                        encoded = base64.b64encode(previous_results_html.encode("utf-8")).decode("ascii")
+                        preserved.append(f"<input type='hidden' name='previous_results_html' value='{html.escape(encoded)}'>")
 
                     table = (
                         "<table><thead><tr><th>#</th><th>Dosya</th><th>Joker</th></tr></thead>"
