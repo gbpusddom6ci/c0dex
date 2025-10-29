@@ -22,6 +22,7 @@ from .counter import (
     compute_offset_alignment,
     predict_time_after_n_steps,
     detect_iou_candles,
+    find_second_sunday_date,
 )
 from .main import (
     Candle as ConverterCandle,
@@ -999,6 +1000,7 @@ class App72Handler(BaseHTTPRequestHandler):
 
                     base_idx, base_status = find_start_index(candles_entry, DEFAULT_START_TOD)
                     report = detect_iou_candles(candles_entry, sequence, limit_val, tolerance=tolerance_val)
+                    second_sunday_date = find_second_sunday_date(candles_entry)
 
                     offset_statuses: List[str] = []
                     offset_counts: List[str] = []
@@ -1057,7 +1059,10 @@ class App72Handler(BaseHTTPRequestHandler):
                                 if slot_time in FRIDAY_ONLY_SPECIAL_SLOTS:
                                     slot_protected = hit.ts.weekday() == 4  # Yalnız Cuma 16:48 kural slot
                                 else:
-                                    slot_protected = True
+                                    if slot_time in SUNDAY_SECOND_ALLOWED_SLOTS and second_sunday_date and hit.ts.date() == second_sunday_date:
+                                        slot_protected = False
+                                    else:
+                                        slot_protected = True
                             if slot_protected and not news_hits:
                                 has_effective_news = True
                                 detail_lines.append(f"Kural slot {hit.ts.strftime('%H:%M')}")
@@ -1428,6 +1433,10 @@ if __name__ == "__main__":
 
 FRIDAY_ONLY_SPECIAL_SLOTS = {
     dtime(hour=16, minute=48),
+}
+SUNDAY_SECOND_ALLOWED_SLOTS = {
+    dtime(hour=19, minute=12),
+    dtime(hour=20, minute=24),
 }
 SPECIAL_SLOT_TIMES = FRIDAY_ONLY_SPECIAL_SLOTS | {
     dtime(hour=18, minute=0),
