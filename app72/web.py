@@ -324,8 +324,9 @@ def render_converter_index() -> bytes:
     return page("app72 - Converter", body, active_tab="converter")
 
 
-def render_iou_index() -> bytes:
-    body = """
+def render_iou_form() -> str:
+    """IOU formunu HTML string olarak döndürür (sonuç sayfasında kullanım için)"""
+    return """
     <div class='card'>
       <form method='post' action='/iou' enctype='multipart/form-data'>
         <div class='row'>
@@ -382,6 +383,10 @@ def render_iou_index() -> bytes:
     <p>IOU taraması, limit üstündeki OC/PrevOC ikililerinden aynı işaret taşıyanları dosya bazlı gösterir. Birden fazla CSV seçebilirsin.</p>
     <p><strong>Not:</strong> 2 haftalık veri varsayımıyla, ikinci Pazar günü hariç 18:00, 19:12 ve 20:24 mumları IOU sayılmaz; ayrıca ilk haftanın Cuma 16:48 mumu da IOU sonucuna dahil edilmez. Bu mumlar XYZ filtresi için ayrıca elenmez.</p>
     """
+
+
+def render_iou_index() -> bytes:
+    body = render_iou_form()
     return page("app72 - IOU", body, active_tab="iou")
 
 
@@ -875,6 +880,15 @@ class App72Handler(BaseHTTPRequestHandler):
                 summary_mode = "xyz_summary" in form
                 pattern_enabled = "pattern_mode" in form
                 confirm_iou = "confirm_iou" in form
+                
+                # Önceki sonuçları al (eğer varsa)
+                previous_results_html = form.get("previous_results_html", {}).get("value", "")
+                if previous_results_html:
+                    try:
+                        previous_results_html = base64.b64decode(previous_results_html.encode("ascii")).decode("utf-8")
+                    except Exception:
+                        previous_results_html = ""
+                
                 try:
                     limit_val = float(limit_raw)
                 except Exception:
@@ -1159,12 +1173,51 @@ class App72Handler(BaseHTTPRequestHandler):
                         )
                     table = "<table><thead>" + header + "</thead><tbody>" + "".join(rows_summary) + "</tbody></table>"
                     pattern_html = render_pattern_panel(all_xyz_sets, allow_zero_after_start=True, file_names=all_file_names, joker_indices=joker_indices) if pattern_enabled else ""
-                    body = "<div class='card'>" + table + "</div>" + pattern_html
+                    current_result = "<div class='card'>" + table + "</div>" + pattern_html
                 else:
                     # Non-summary: tüm dosya kartları + varsa örüntü paneli
                     if pattern_enabled:
                         sections.append(render_pattern_panel(all_xyz_sets, allow_zero_after_start=True, file_names=all_file_names, joker_indices=joker_indices))
-                    body = "\n".join(sections)
+                    current_result = "\n".join(sections)
+                
+                # Yeni analiz sonucunu bir bölüm içine al
+                from datetime import datetime
+                result_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+                result_section = (
+                    f"<div id='result_{result_id}' style='margin-bottom:32px; padding-bottom:24px; border-bottom:2px solid #ddd;'>"
+                    f"<h3 style='color:#0366d6; margin-bottom:16px;'>Analiz #{result_id}</h3>"
+                    f"{current_result}"
+                    f"</div>"
+                )
+                
+                # Önceki sonuçları ve yeni sonucu birleştir (yeni sonuç üstte)
+                if previous_results_html:
+                    body_without_form = result_section + previous_results_html
+                else:
+                    body_without_form = result_section
+                
+                # Sonuçların altına tekrar IOU formunu ekle (önceki sonuçları da hidden field olarak taşı)
+                # Önce body_without_form'u encode edip sakla (form eklenmeden önceki hali)
+                body_encoded = base64.b64encode(body_without_form.encode("utf-8")).decode("ascii")
+                
+                form_html = render_iou_form()
+                # Form içindeki form tag'ini kaldırıp sadece içeriği al
+                form_content = form_html.replace("<form method='post' action='/iou' enctype='multipart/form-data'>", "").replace("</form>", "").strip()
+                
+                form_section = (
+                    "<hr style='margin:32px 0; border:none; border-top:2px solid #ddd;'>"
+                    "<h2 style='margin-top:24px;'>Yeni Analiz</h2>"
+                    "<div class='card'>"
+                    "<form method='post' action='/iou' enctype='multipart/form-data'>"
+                    f"<input type='hidden' name='previous_results_html' value='{body_encoded}'>"
+                    + form_content +
+                    "</form>"
+                    "</div>"
+                )
+                
+                # Final body: önceki sonuçlar + yeni sonuç + form
+                body = body_without_form + form_section
+                
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 _add_security_headers(self)
