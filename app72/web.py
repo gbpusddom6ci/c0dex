@@ -351,11 +351,7 @@ def render_iou_index() -> bytes:
           </label>
           <label style='display:flex; align-items:center; gap:8px;'>
             <input type='checkbox' name='pattern_mode' />
-            <span>Örüntüleme (max 1000)</span>
-          </label>
-          <label style='display:flex; align-items:center; gap:8px;'>
-            <input type='checkbox' name='pattern_zero_after_start' />
-            <span>Başlangıçta ±1/±3 sonrası 0'a izin ver</span>
+            <span>Örüntüleme</span>
           </label>
         </div>
         <div style='margin-top:12px;'>
@@ -741,7 +737,6 @@ class App72Handler(BaseHTTPRequestHandler):
                 xyz_enabled = "xyz_mode" in form
                 summary_mode = "xyz_summary" in form
                 pattern_enabled = "pattern_mode" in form
-                pattern_zero_after_start = "pattern_zero_after_start" in form
                 try:
                     limit_val = float(limit_raw)
                 except Exception:
@@ -920,12 +915,12 @@ class App72Handler(BaseHTTPRequestHandler):
                             "</tr>"
                         )
                     table = "<table><thead>" + header + "</thead><tbody>" + "".join(rows_summary) + "</tbody></table>"
-                    pattern_html = render_pattern_panel(all_xyz_sets, allow_zero_after_start=pattern_zero_after_start) if pattern_enabled else ""
+                    pattern_html = render_pattern_panel(all_xyz_sets, allow_zero_after_start=True) if pattern_enabled else ""
                     body = "<div class='card'>" + table + "</div>" + pattern_html
                 else:
                     # Non-summary: tüm dosya kartları + varsa örüntü paneli
                     if pattern_enabled:
-                        sections.append(render_pattern_panel(all_xyz_sets, allow_zero_after_start=pattern_zero_after_start))
+                        sections.append(render_pattern_panel(all_xyz_sets, allow_zero_after_start=True))
                     body = "\n".join(sections)
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
