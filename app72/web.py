@@ -2,6 +2,7 @@ import argparse
 import csv
 import html
 import io
+import base64
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import List, Optional, Dict, Any, Type, Tuple, Set
 from zipfile import ZipFile, ZIP_DEFLATED
@@ -636,12 +637,15 @@ class App72Handler(BaseHTTPRequestHandler):
                 return
             form = parse_multipart(self)
             file_obj = form.get("csv")
-            if not file_obj or "data" not in file_obj:
+            files_list: List[Dict[str, Any]] = []
+            text = ""
+            if file_obj and "data" in file_obj:
+                raw = file_obj["data"]
+                text = raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
+                files_list = file_obj.get("files") or [{"filename": file_obj.get("filename"), "data": file_obj.get("data")}]
+            elif self.path != "/iou":
+                # IOU dışında CSV zorunlu
                 raise ValueError("CSV dosyası bulunamadı")
-            raw = file_obj["data"]
-            text = raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
-
-            files_list = file_obj.get("files") or [{"filename": file_obj.get("filename"), "data": file_obj.get("data")}]
             if len(files_list) > MAX_FILES:
                 self.send_response(413)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -737,6 +741,7 @@ class App72Handler(BaseHTTPRequestHandler):
                 xyz_enabled = "xyz_mode" in form
                 summary_mode = "xyz_summary" in form
                 pattern_enabled = "pattern_mode" in form
+                confirm_iou = "confirm_iou" in form
                 try:
                     limit_val = float(limit_raw)
                 except Exception:
@@ -749,10 +754,99 @@ class App72Handler(BaseHTTPRequestHandler):
                 tolerance_val = abs(tolerance_val)
                 limit_margin = limit_val + tolerance_val
 
+                # Alternatif (2. adım) dosya içeriği: csv_b64_{i} + csv_name_{i}
+                b64_entries: List[Dict[str, Any]] = []
+                k = 0
+                while True:
+                    kb = f"csv_b64_{k}"
+                    kn = f"csv_name_{k}"
+                    if kb in form and kn in form:
+                        b64_val = form[kb].get("value") or ""
+                        name_val = form[kn].get("value") or f"uploaded_{k}.csv"
+                        try:
+                            data_bytes = base64.b64decode(b64_val.encode("ascii"), validate=True)
+                        except Exception:
+                            data_bytes = b64_val.encode("utf-8", errors="replace")
+                        b64_entries.append({"filename": name_val, "data": data_bytes})
+                        k += 1
+                        continue
+                    break
+
+                # İlk adım: Joker seçimi ekranı
+                if not confirm_iou and files_list:
+                    idx = 0
+                    hidden_fields: List[str] = []
+                    file_rows: List[str] = []
+                    for entry in files_list:
+                        name = entry.get("filename") or f"uploaded_{idx}.csv"
+                        raw_bytes = entry.get("data")
+                        if isinstance(raw_bytes, str):
+                            raw_bytes = raw_bytes.encode("utf-8", errors="replace")
+                        b64 = base64.b64encode(raw_bytes or b"").decode("ascii")
+                        hidden_fields.append(f"<input type='hidden' name='csv_b64_{idx}' value='{html.escape(b64)}'>")
+                        hidden_fields.append(f"<input type='hidden' name='csv_name_{idx}' value='{html.escape(name)}'>")
+                        file_rows.append(
+                            f"<tr><td>{idx+1}</td><td>{html.escape(name)}</td>"
+                            f"<td><label style='display:flex;gap:8px;align-items:center;'><input type='checkbox' name='joker_{idx}' /> Joker</label></td></tr>"
+                        )
+                        idx += 1
+
+                    def _hidden_bool(name: str, enabled: bool) -> str:
+                        return f"<input type='hidden' name='{name}' value='1'>" if enabled else ""
+
+                    preserved = [
+                        f"<input type='hidden' name='sequence' value='{html.escape(sequence)}'>",
+                        f"<input type='hidden' name='input_tz' value='{html.escape(tz_label_sel)}'>",
+                        f"<input type='hidden' name='limit' value='{html.escape(str(limit_val))}'>",
+                        f"<input type='hidden' name='tolerance' value='{html.escape(str(tolerance_val))}'>",
+                        _hidden_bool("xyz_mode", xyz_enabled),
+                        _hidden_bool("xyz_summary", summary_mode),
+                        _hidden_bool("pattern_mode", pattern_enabled),
+                        "<input type='hidden' name='confirm_iou' value='1'>",
+                    ]
+
+                    table = (
+                        "<table><thead><tr><th>#</th><th>Dosya</th><th>Joker</th></tr></thead>"
+                        f"<tbody>{''.join(file_rows)}</tbody></table>"
+                    )
+                    body = (
+                        "<div class='card'>"
+                        "<h3>Joker Seçimi</h3>"
+                        "<div>Analize başlamadan önce 'Joker' dosyaları seç. Joker dosyalar XYZ kümesinde tüm offsetleri (-3..+3) içerir.</div>"
+                        + table +
+                        f"<form method='post' action='/iou' enctype='multipart/form-data'>"
+                        + "".join(hidden_fields + preserved) +
+                        "<div style='margin-top:12px;'><button type='submit'>Analizi Başlat</button></div>"
+                        "</form>"
+                        "</div>"
+                    )
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    _add_security_headers(self)
+                    self.end_headers()
+                    self.wfile.write(page("app72 IOU - Joker Seçimi", body, active_tab="iou"))
+                    return
+
+                effective_entries = b64_entries if b64_entries else files_list
+                joker_indices: Set[int] = set()
+                j = 0
+                # varsa joker_* işaretlerini topla
+                while True:
+                    key = f"joker_{j}"
+                    if key in form:
+                        joker_indices.add(j)
+                        j += 1
+                        continue
+                    # limit: mevcut entry sayısına kadar dene
+                    if j < len(effective_entries):
+                        j += 1
+                        continue
+                    break
+
                 sections: List[str] = []
                 summary_entries: List[Dict[str, Any]] = []
                 all_xyz_sets: List[Set[int]] = []
-                for entry in files_list:
+                for idx_entry, entry in enumerate(effective_entries):
                     entry_data = entry.get("data")
                     if isinstance(entry_data, (bytes, bytearray)):
                         text_entry = entry_data.decode("utf-8", errors="replace")
@@ -858,6 +952,9 @@ class App72Handler(BaseHTTPRequestHandler):
 
                     base_offsets = [-3, -2, -1, 0, 1, 2, 3]
                     xyz_offsets = [o for o in base_offsets if not offset_has_non_news.get(o, False)] if xyz_enabled else base_offsets
+                    # Joker: XYZ tam kapsam
+                    if idx_entry in joker_indices:
+                        xyz_offsets = base_offsets[:]
                     xyz_text = ", ".join((f"+{o}" if o > 0 else str(o)) for o in xyz_offsets) if xyz_offsets else "-"
                     all_xyz_sets.append(set(xyz_offsets))
 
@@ -876,7 +973,8 @@ class App72Handler(BaseHTTPRequestHandler):
                     else:
                         xyz_line = ""
                         if xyz_enabled:
-                            xyz_line = f"<div><strong>XYZ Kümesi:</strong> {html.escape(xyz_text)}</div>"
+                            joker_tag = " (Joker)" if idx_entry in joker_indices else ""
+                            xyz_line = f"<div><strong>XYZ Kümesi{joker_tag}:</strong> {html.escape(xyz_text)}</div>"
 
                         info = (
                             f"<div class='card'>"
