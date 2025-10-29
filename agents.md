@@ -4,6 +4,7 @@ Bu rehber, projedeki tüm alt uygulamaları (app321, app48, app72, app80, app120
 
 ## 1. En Güncel Özellikler
 
+- **2025-10 – app72 IOU örüntüleme + Joker + tooltip:** Çoklu CSV’den gelen XYZ kümelerinden kurallı örüntü (pattern) üretimi eklendi. Yükleme sonrası “Joker Seçimi” adımıyla dosyalar joker olarak işaretlenebilir (XYZ = tüm offsetler). Örüntü paneli; devam önerileri, “Son değerler” özeti ve her adımda imleç üstünde kaynak dosya (ve Joker) bilgisini tooltip olarak gösterir. Performans sınırlamaları: beam 512, en fazla 1000 örüntü.
 - **2025-08 – app48/app72/app80/app321 IOU sekmeleri:** Her timeframe için IOU taraması eklendi; formlar çoklu CSV yüklemelerini destekler ve sonuçlar dosya bazlı kartlarda rapor edilir.
 - **2025-08 – app120 IOV/IOU çoklu dosya taraması:** IOV ve IOU web sekmeleri tek seferde birden fazla CSV dosyası kabul eder; her dosyanın sonuçları ayrı kartlarda raporlanır. Limit, dizi ve zaman dilimi ayarı tüm yüklemelere aynı anda uygulanır.
 - **2025-08 – IOU sinyal motoru:** IOV’e paralel olarak IOU (aynı işaretli OC/PrevOC) algılama eklendi.
@@ -165,6 +166,17 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
   python3 -m app72.main --csv 12m.csv --input-tz UTC-5 --output 72m.csv
   ```
 
+- **Örüntüleme (Pattern) – IOU:** Çoklu dosyadan gelen XYZ kümeleri kronolojide tek tek tüketilerek kurallı diziler üretilir. Varsayılan kapalı olan “Örüntüleme” checkbox’ı ile panel görüntülenir. Kurallar/akış:
+  - Başlangıç serbest: ilk adım 0 veya ±1/±2/±3 olabilir; her 0’dan sonra yeni bir üçlü başlangıcı yalnız ±1 veya ±3 ile yapılır.
+  - Üçlü kuralı: Aynı işaretle 1–2–3 (yükselen) ya da 3–2–1 (azalan) tamamlanır; üçlü tamamlanmadan 0 alınamaz. İstisna: ilk adım ±1/±3 ise ikinci adımda 0’a izin verilir (otomatik; ayrı checkbox yok).
+  - ±2 ile başlanırsa ikinci adım aynı işaretin 1 veya 3’ü olmalıdır (yön o anda belirlenir).
+  - Ard arda aynı değer olamaz; işaret üçlü içinde sabittir; tüm yüklenen dosyalar sırasıyla kullanılmak zorundadır (atlama yok). Uygun örüntü yoksa sonuç üretilmez.
+  - Performans sınırı: beam genişliği 512, en fazla 1000 örüntü (ilk 1000 gösterilir).
+  - Çıktı: Her satır sonunda “(devam: …)” olası bir sonraki offsetleri listeler; “Son değerler” bölümü tüm örüntülerin son offsetlerini benzersiz ve sıralı gösterir.
+  - Tooltip: Örüntüdeki her offsetin üstüne gelince o adımın kaynak dosya adı görünür; Joker dosyalarda “(Joker)” etiketi eklenir.
+
+- **Joker Seçimi:** IOU formuna birden fazla dosya yüklendikten sonra analizden önce “Joker Seçimi” ekranı gelir. Seçilen dosyalar Joker kabul edilir ve bu dosyaların XYZ kümesi örüntüleme aşamasında tüm offsetleri (-3..+3) kapsar. Kart başlığında ve tooltip’lerde Joker bilgisi görünür. Özet ve detay modlarında çalışır.
+
 ### 4.4 app48 – 48 Dakikalık Analiz
 - **Özellikler:** Sentetik mum ekleme (ilk gün hariç, her gün 18:00 ve 18:48). Web portu 2020.
 - **IOU Tarama:** Limit, ± tolerans (varsayılan 0.005) ve dizi seçimleriyle çoklu CSV analiz eder; `limit + tolerans` eşiğini geçen satırlar sentetik/gerçek ayrımı `syn/real` etiketiyle gösterilerek raporlanır. 18:00, 18:48 ve 19:36 mumları IOU olarak hiçbir zaman listelenmez.
@@ -261,18 +273,20 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
 
 ## 8. Kullanım İpuçları
 
-- **IOV/IOU Çoklu Yükleme:** 25’e kadar CSV aynı formla seçilebilir; sonuçlarda hangi dosyanın hangi sinyali verdiği açıkça görülür.
+- **IOV/IOU Çoklu Yükleme:** 50’ye kadar CSV aynı formla seçilebilir; sonuçlarda hangi dosyanın hangi sinyali verdiği açıkça görülür.
 - **Limit Seçimi:** Limit değeri 0 girilmemelidir; sıfır değeri sinyallerin çoğunu eler.
 - **± Tolerans:** Varsayılan tolerans 0.005’tir; IOU formlarındaki alanı kullanarak eşiği genişletebilir/kısıtlayabilirsiniz. Tolerans değeri `limit`e eklenir, bu yüzden toleransı büyütmek raporlanan satırları daraltır.
 - **DC İncelemesi:** Web arayüzlerindeki DC List sekmeleri ile ham DC listelerini görüntüleyebilir ve CSV’ye aktarabilirsiniz.
 - **Timezone Tutarlılığı:** Render’da güncel veri yüklerken girdi timezone’unu mutlaka seçin; aksi halde analiz kayar.
 - **Sentetik Mumlar:** app48 sonuçlarında sentetik mumlar normal count’a dahil, ancak DC listesinde `tag=syn` ile ayrışır.
+ - **Örüntüleme ipucu (app72 IOU):** Çok sayıda dosyada kombinasyonlar hızla büyüyebilir; Joker ile bir/iki dosyayı tam kapsayıcı yapmak arama uzayını dengeleyebilir. Tooltip’lerle adımın hangi dosyadan geldiğini hızlıca doğrulayın.
 
 ## 9. Geliştirici Notları
 
 - `__pycache__` klasörleri version control’de tutulmamalı; geliştirme sırasında otomatik oluşur.
-- CSV dosyaları büyükse (25 dosya yükleme) tarayıcı POST limitini aşmamak için boyut kontrolü yapın.
+- CSV dosyaları büyükse (50 dosya yükleme) tarayıcı POST limitini aşmamak için boyut kontrolü yapın.
 - Yeni timeframe eklemek için en güncel örnek olarak `app120` mimarisini baz alın; ortak kurallar `CounterCandle` ve DC hesaplama fonksiyonlarıyla paylaşılabilir.
 - Render dağıtımında her web servisinin ayrı port’ta koştuğundan emin olun; `appsuite` tümünü proxy’lemek için en pratik çözüm.
+ - Bilinen fark (spec ↔ web): app72 IOU XYZ eleme mantığı web katmanında “OR” ve “>” ile çalışır; çekirdek/rehber ise `|OC|` ve `|PrevOC| ≥ limit + tolerans` (AND) ister. Uyumlandırma ileride yapılacaktır.
 
 Bu doküman, proje kapsamı genişledikçe güncellenmelidir. Yeni bir özellik eklendiğinde, “En Güncel Özellikler” bölümüne tarih/özet eklemeyi unutmayın.
