@@ -3,7 +3,8 @@ import argparse
 import html
 import io
 import csv
-from typing import List, Optional, Dict, Any, Type, Set
+import base64
+from typing import List, Optional, Dict, Any, Type, Set, Tuple
 
 from favicon import render_head_links, try_load_asset
 
@@ -38,8 +39,302 @@ from typing import Tuple
 from news_loader import find_news_for_timestamp
 
 IOU_TOLERANCE = 0.005
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
-MAX_FILES = 50
+
+# --- Örüntüleme Yardımcıları ---
+
+PATTERN_MAX_PATHS = 1000
+PATTERN_BEAM_WIDTH = 512
+
+def _fmt_off(v: int) -> str:
+    return f"+{v}" if v > 0 else str(v)
+
+def _sign(v: int) -> int:
+    if v > 0:
+        return 1
+    if v < 0:
+        return -1
+    return 0
+
+def _allowed_values_for_state(state: Dict[str, Any], choices: Set[int], allow_zero_after_start: bool) -> List[int]:
+    prev = state.get("prev")
+    mode = state.get("mode")  # 'free', 'after_zero', 'triple', 'need_zero'
+    sign = state.get("sign")
+    direction = state.get("dir")  # 'asc' | 'desc' | None
+    pos = state.get("pos")  # 1|2|3|None
+    allow_zero_next = bool(state.get("allow_zero_next"))
+
+    allowed: Set[int] = set()
+    if mode == "free":
+        allowed = set(choices)
+    elif mode == "after_zero":
+        for k in (1, 3):
+            for s in (-1, 1):
+                v = s * k
+                if v in choices:
+                    allowed.add(v)
+    elif mode == "triple":
+        if pos == 2 and direction is None:
+            # ±2 ile başlandıysa sonraki değer 1 veya 3 (aynı işaret)
+            for k in (1, 3):
+                v = sign * k
+                if v in choices:
+                    allowed.add(v)
+        else:
+            if direction == "asc":
+                nxt = 2 if pos == 1 else (3 if pos == 2 else None)
+            else:  # desc
+                nxt = 2 if pos == 3 else (1 if pos == 2 else None)
+            if nxt is not None:
+                v = sign * nxt
+                if v in choices:
+                    allowed.add(v)
+    elif mode == "need_zero":
+        if 0 in choices:
+            allowed = {0}
+
+    # Özel kural: ilk adım ±1/±3 ise bir sonraki adımda 0 opsiyonunu da aç
+    if allow_zero_after_start and allow_zero_next and 0 in choices:
+        allowed.add(0)
+
+    # Ard arda aynı değer yasak
+    if prev is not None and prev in allowed:
+        allowed.discard(prev)
+
+    order = { -3:0, -2:1, -1:2, 0:3, 1:4, 2:5, 3:6 }
+    return sorted(list(allowed), key=lambda v: order.get(v, 99))
+
+
+def _advance_state(state: Dict[str, Any], value: int, step_idx: int, allow_zero_after_start: bool) -> Dict[str, Any]:
+    # Kopya oluştur
+    ns = {
+        "mode": state.get("mode"),
+        "sign": state.get("sign"),
+        "dir": state.get("dir"),
+        "pos": state.get("pos"),
+        "allow_zero_next": False,  # varsayılan reset
+        "prev": value,
+        "seq": list(state.get("seq") or []) + [value],
+    }
+
+    mode = state.get("mode")
+    sign = state.get("sign")
+    direction = state.get("dir")
+    pos = state.get("pos")
+
+    if mode == "free":
+        if value == 0:
+            ns.update({"mode": "after_zero", "sign": None, "dir": None, "pos": None})
+        else:
+            s = _sign(value)
+            a = abs(value)
+            if a == 2:
+                ns.update({"mode": "triple", "sign": s, "dir": None, "pos": 2})
+            elif a == 1:
+                ns.update({"mode": "triple", "sign": s, "dir": "asc", "pos": 1})
+            elif a == 3:
+                ns.update({"mode": "triple", "sign": s, "dir": "desc", "pos": 3})
+            # Özel kural (sadece global ilk adım için): sonraki adıma 0 izni
+            if allow_zero_after_start and a in (1, 3) and step_idx == 0:
+                ns["allow_zero_next"] = True
+    elif mode == "after_zero":
+        # Sadece ±1/±3 ile yeni üçlü başlar
+        s = _sign(value)
+        a = abs(value)
+        if a == 1:
+            ns.update({"mode": "triple", "sign": s, "dir": "asc", "pos": 1})
+        elif a == 3:
+            ns.update({"mode": "triple", "sign": s, "dir": "desc", "pos": 3})
+    elif mode == "triple":
+        if value == 0 and state.get("allow_zero_next"):
+            # İlk adım ±1/±3 sonrası 0 istisnası
+            ns.update({"mode": "after_zero", "sign": None, "dir": None, "pos": None})
+        else:
+            s = sign
+            a = abs(value)
+            if pos == 2 and direction is None:
+                # 2'den 1 veya 3'e geçiş tamamlanınca 0 beklenir
+                if a == 1:
+                    ns.update({"mode": "need_zero", "sign": s, "dir": "desc", "pos": 1})
+                elif a == 3:
+                    ns.update({"mode": "need_zero", "sign": s, "dir": "asc", "pos": 3})
+            else:
+                if direction == "asc":
+                    if pos == 1 and a == 2:
+                        ns.update({"mode": "triple", "sign": s, "dir": "asc", "pos": 2})
+                    elif pos == 2 and a == 3:
+                        ns.update({"mode": "need_zero", "sign": s, "dir": "asc", "pos": 3})
+                else:  # desc
+                    if pos == 3 and a == 2:
+                        ns.update({"mode": "triple", "sign": s, "dir": "desc", "pos": 2})
+                    elif pos == 2 and a == 1:
+                        ns.update({"mode": "need_zero", "sign": s, "dir": "desc", "pos": 1})
+    elif mode == "need_zero":
+        if value == 0:
+            ns.update({"mode": "after_zero", "sign": None, "dir": None, "pos": None})
+
+    return ns
+
+
+def build_patterns_from_xyz_lists(xyz_sets: List[Set[int]], allow_zero_after_start: bool, max_paths: int = PATTERN_MAX_PATHS, beam_width: int = PATTERN_BEAM_WIDTH) -> List[List[int]]:
+    if not xyz_sets:
+        return []
+    # Başlangıç durumu
+    states: List[Dict[str, Any]] = [{
+        "mode": "free",
+        "sign": None,
+        "dir": None,
+        "pos": None,
+        "allow_zero_next": False,
+        "prev": None,
+        "seq": [],
+    }]
+
+    for idx, choices in enumerate(xyz_sets):
+        next_states: List[Dict[str, Any]] = []
+        for st in states:
+            allowed = _allowed_values_for_state(st, choices, allow_zero_after_start)
+            if not allowed:
+                continue
+            for v in allowed:
+                ns = _advance_state(st, v, idx, allow_zero_after_start)
+                next_states.append(ns)
+                if len(next_states) >= beam_width:
+                    # Basit beam budaması
+                    break
+            if len(next_states) >= beam_width:
+                break
+        states = next_states
+        if not states:
+            break
+
+    results: List[List[int]] = [st["seq"] for st in states if len(st.get("seq", [])) == len(xyz_sets)]
+    return results[:max_paths]
+
+
+def render_pattern_panel(
+    xyz_sets: List[Set[int]],
+    allow_zero_after_start: bool,
+    file_names: Optional[List[str]] = None,
+    joker_indices: Optional[Set[int]] = None,
+) -> str:
+    patterns = build_patterns_from_xyz_lists(xyz_sets, allow_zero_after_start=allow_zero_after_start)
+    if not patterns:
+        return "<div class='card'><h3>Örüntüleme</h3><div>Örüntü bulunamadı.</div></div>"
+    def _build_state_for_seq(seq: List[int]) -> Dict[str, Any]:
+        st: Dict[str, Any] = {
+            "mode": "free",
+            "sign": None,
+            "dir": None,
+            "pos": None,
+            "allow_zero_next": False,
+            "prev": None,
+            "seq": [],
+        }
+        for i, v in enumerate(seq):
+            st = _advance_state(st, v, i, allow_zero_after_start)
+        return st
+
+    domain = {-3, -2, -1, 0, 1, 2, 3}
+    # 1) Üçlü kümeleri (0'sız) ve dosya uyumunu baz alarak blok rengi ata (başlangıç index'i -> renk)
+    triple_starts: Dict[Tuple[int, int], str] = {}
+    if file_names and len(file_names) >= 3:
+        triples: Dict[Tuple[int, int, int, str, str, str], List[Tuple[int, int]]] = {}
+        for li, seq in enumerate(patterns):
+            for i in range(0, max(0, len(seq) - 2)):
+                a, b, c = seq[i], seq[i+1], seq[i+2]
+                if 0 in (a, b, c):
+                    continue
+                f1 = file_names[i] if i < len(file_names) else None
+                f2 = file_names[i+1] if i+1 < len(file_names) else None
+                f3 = file_names[i+2] if i+2 < len(file_names) else None
+                if not (f1 and f2 and f3):
+                    continue
+                key = (a, b, c, f1, f2, f3)
+                triples.setdefault(key, []).append((li, i))
+        # Renkleri ata (yalnız en az 2 yerde geçen üçlüler)
+        for key, occs in triples.items():
+            if len(occs) < 2:
+                continue
+            s = str(key)
+            try:
+                import hashlib
+                hv = int(hashlib.md5(s.encode('utf-8')).hexdigest()[:6], 16)
+            except Exception:
+                hv = abs(hash(s))
+            hue = hv % 360
+            # Daha saydam bir opaklık: alpha ~ 0.28, biraz daha koyu lightness ile
+            color = f"hsla({hue}, 85%, 60%, 0.28)"
+            for li, i in occs:
+                # Başlangıç konumuna rengi ata (çakışmalarda ilk kazanır)
+                triple_starts.setdefault((li, i), color)
+
+    lines: List[str] = []
+    for idx_line, seq in enumerate(patterns):
+        parts: List[str] = []
+        i = 0
+        while i < len(seq):
+            name = None
+            if file_names and 0 <= i < len(file_names):
+                name = file_names[i]
+            tip = name or ""
+            if joker_indices and i in joker_indices:
+                tip = (tip + " (Joker)").strip()
+            v = seq[i]
+            token = html.escape(_fmt_off(v))
+            if tip:
+                def token_html(idx:int) -> str:
+                    nm = file_names[idx] if file_names and 0 <= idx < len(file_names) else ""
+                    tp = nm or ""
+                    if joker_indices and idx in joker_indices:
+                        tp = (tp + " (Joker)").strip()
+                    tk = html.escape(_fmt_off(seq[idx]))
+                    if tp:
+                        return (
+                            f"<span class='pat-token' title='{html.escape(tp)}' data-tip='{html.escape(tp)}'>{tk}</span>"
+                        )
+                    return f"<span class='pat-token'>{tk}</span>"
+            else:
+                def token_html(idx:int) -> str:
+                    tk = html.escape(_fmt_off(seq[idx]))
+                    return f"<span class='pat-token'>{tk}</span>"
+
+            # Eğer bu pozisyon üçlü başlangıcı ise, üç tokenı ve iki virgülü tek blokta boya
+            color = triple_starts.get((idx_line, i))
+            if color and i + 2 < len(seq):
+                block = (
+                    f"<span style='background-color:{html.escape(color)}; border-radius:4px; padding:0 3px;'>"
+                    f"{token_html(i)}, {token_html(i+1)}, {token_html(i+2)}"
+                    f"</span>"
+                )
+                parts.append(block)
+                i += 3
+                if i < len(seq):
+                    parts.append(", ")
+                continue
+            # aksi halde tek token
+            parts.append(token_html(i))
+            i += 1
+            if i < len(seq):
+                parts.append(", ")
+        label = ", ".join(parts)
+        st = _build_state_for_seq(seq)
+        opts = _allowed_values_for_state(st, domain, allow_zero_after_start)
+        cont = ", ".join(_fmt_off(v) for v in opts) if opts else "-"
+        lines.append(f"<div class='pat-line'>{label} (devam: {html.escape(cont)})</div>")
+    # Son değerlerin özeti (benzersiz, sıralı)
+    last_vals = [seq[-1] for seq in patterns if seq]
+    order = { -3:0, -2:1, -1:2, 0:3, 1:4, 2:5, 3:6 }
+    unique_last_sorted = []
+    seen = set()
+    for v in sorted(last_vals, key=lambda x: order.get(x, 99)):
+        if v not in seen:
+            seen.add(v)
+            unique_last_sorted.append(v)
+    last_line = "<div><strong>Son değerler:</strong> " + (
+        ", ".join(_fmt_off(v) for v in unique_last_sorted) if unique_last_sorted else "-"
+    ) + "</div>"
+    info = f"<div><strong>Toplam örüntü:</strong> {len(patterns)} (ilk {min(len(patterns), PATTERN_MAX_PATHS)})</div>"
+    return "<div class='card'><h3>Örüntüleme</h3>" + info + last_line + "".join(lines) + "</div>"
 
 def _add_security_headers(handler: BaseHTTPRequestHandler) -> None:
     handler.send_header("X-Content-Type-Options", "nosniff")
@@ -65,6 +360,7 @@ def _sanitize_csv_filename(name: str, suffix: str) -> str:
             out = out[:120]
     return out
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+MAX_FILES = 50
 
 
 def load_candles_from_text(text: str, candle_cls: Type) -> List:
@@ -145,6 +441,23 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
       .tabs{{display:flex; gap:12px; margin-bottom:12px;}}
       .tabs a{{text-decoration:none; color:#0366d6; padding:6px 8px; border-radius:6px;}}
       .tabs a.active{{background:#e6f2ff; color:#024ea2;}}
+      /* Pattern tokens */
+      .pat-line{{margin:2px 0;}}
+      .pat-token{{display:inline-block; padding:0 2px; border-bottom:1px dashed #aaa; cursor:help; position:relative;}}
+      .pat-token[data-tip]:hover::after{{
+        content: attr(data-tip);
+        position:absolute;
+        bottom:100%;
+        left:0;
+        transform: translateY(-4px);
+        background:rgba(0,0,0,0.85);
+        color:#fff;
+        padding:4px 6px;
+        border-radius:4px;
+        white-space:nowrap;
+        font-size:12px;
+        z-index:20;
+      }}
     </style>
   </head>
   <body>
@@ -375,6 +688,10 @@ def render_iou_index() -> bytes:
           <label style='display:flex; align-items:center; gap:8px;'>
             <input type='checkbox' name='xyz_summary' />
             <span>Özet tablo (yalnız XYZ kümesi)</span>
+          </label>
+          <label style='display:flex; align-items:center; gap:8px;'>
+            <input type='checkbox' name='pattern_mode' />
+            <span>Örüntüleme</span>
           </label>
         </div>
         <div style='margin-top:12px;'>
@@ -630,6 +947,8 @@ class App120Handler(BaseHTTPRequestHandler):
                 metric_label = "IOV" if self.path == "/iov" else "IOU"
                 xyz_enabled = metric_label == "IOU" and "xyz_mode" in form
                 summary_mode = metric_label == "IOU" and "xyz_summary" in form
+                pattern_enabled = metric_label == "IOU" and "pattern_mode" in form
+                confirm_iou = metric_label == "IOU" and "confirm_iou" in form
                 tolerance_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
                 if metric_label == "IOU":
                     try:
@@ -641,9 +960,103 @@ class App120Handler(BaseHTTPRequestHandler):
                     tolerance_val = 0.0
                 limit_margin = limit_val + tolerance_val
 
+                # Alternatif (2. adım) dosya içeriği: csv_b64_{i} + csv_name_{i}
+                b64_entries: List[Dict[str, Any]] = []
+                k = 0
+                while True:
+                    kb = f"csv_b64_{k}"
+                    kn = f"csv_name_{k}"
+                    if kb in form and kn in form:
+                        b64_val = form[kb].get("value") or ""
+                        name_val = form[kn].get("value") or f"uploaded_{k}.csv"
+                        try:
+                            data_bytes = base64.b64decode(b64_val.encode("ascii"), validate=True)
+                        except Exception:
+                            data_bytes = b64_val.encode("utf-8", errors="replace")
+                        b64_entries.append({"filename": name_val, "data": data_bytes})
+                        k += 1
+                        continue
+                    break
+
+                # İlk adım: Joker seçimi ekranı (yalnız IOU için)
+                if metric_label == "IOU" and not confirm_iou and files:
+                    idx = 0
+                    hidden_fields: List[str] = []
+                    file_rows: List[str] = []
+                    for entry in files:
+                        name = entry.get("filename") or f"uploaded_{idx}.csv"
+                        raw_bytes = entry.get("data")
+                        if isinstance(raw_bytes, str):
+                            raw_bytes = raw_bytes.encode("utf-8", errors="replace")
+                        b64 = base64.b64encode(raw_bytes or b"").decode("ascii")
+                        hidden_fields.append(f"<input type='hidden' name='csv_b64_{idx}' value='{html.escape(b64)}'>")
+                        hidden_fields.append(f"<input type='hidden' name='csv_name_{idx}' value='{html.escape(name)}'>")
+                        file_rows.append(
+                            f"<tr><td>{idx+1}</td><td>{html.escape(name)}</td>"
+                            f"<td><label style='display:flex;gap:8px;align-items:center;'><input type='checkbox' name='joker_{idx}' /> Joker</label></td></tr>"
+                        )
+                        idx += 1
+
+                    def _hidden_bool(name: str, enabled: bool) -> str:
+                        return f"<input type='hidden' name='{name}' value='1'>" if enabled else ""
+
+                    sequence_val = (form.get("sequence", {}).get("value") or "S1").strip() or "S1"
+                    tz_val = (form.get("input_tz", {}).get("value") or "UTC-4").strip()
+                    preserved = [
+                        f"<input type='hidden' name='sequence' value='{html.escape(sequence_val)}'>",
+                        f"<input type='hidden' name='input_tz' value='{html.escape(tz_val)}'>",
+                        f"<input type='hidden' name='limit' value='{html.escape(str(limit_val))}'>",
+                        f"<input type='hidden' name='tolerance' value='{html.escape(str(tolerance_val))}'>",
+                        _hidden_bool("xyz_mode", xyz_enabled),
+                        _hidden_bool("xyz_summary", summary_mode),
+                        _hidden_bool("pattern_mode", pattern_enabled),
+                        "<input type='hidden' name='confirm_iou' value='1'>",
+                    ]
+
+                    table = (
+                        "<table><thead><tr><th>#</th><th>Dosya</th><th>Joker</th></tr></thead>"
+                        f"<tbody>{''.join(file_rows)}</tbody></table>"
+                    )
+                    body = (
+                        "<div class='card'>"
+                        "<h3>Joker Seçimi</h3>"
+                        "<div>Analize başlamadan önce 'Joker' dosyaları seç. Joker dosyalar XYZ kümesinde tüm offsetleri (-3..+3) içerir.</div>"
+                        f"<form method='post' action='/iou' enctype='multipart/form-data'>"
+                        + table
+                        + "".join(hidden_fields + preserved)
+                        + "<div style='margin-top:12px;'><button type='submit'>Analizi Başlat</button></div>"
+                        + "</form>"
+                        + "</div>"
+                    )
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/html; charset=utf-8")
+                    _add_security_headers(self)
+                    self.end_headers()
+                    self.wfile.write(page("app120 IOU - Joker Seçimi", body, active_tab="iou"))
+                    return
+
+                effective_entries = b64_entries if b64_entries and metric_label == "IOU" else files
+                joker_indices: Set[int] = set()
+                if metric_label == "IOU":
+                    j = 0
+                    # varsa joker_* işaretlerini topla
+                    while True:
+                        key = f"joker_{j}"
+                        if key in form:
+                            joker_indices.add(j)
+                            j += 1
+                            continue
+                        # limit: mevcut entry sayısına kadar dene
+                        if j < len(effective_entries):
+                            j += 1
+                            continue
+                        break
+
                 sections: List[str] = []
                 summary_entries: List[Dict[str, Any]] = []
-                for entry in files:
+                all_xyz_sets: List[Set[int]] = []
+                all_file_names: List[str] = []
+                for entry in effective_entries:
                     candles = load_counter_candles(entry)
                     if metric_label == "IOU":
                         report = detector(candles, sequence, limit_val, tolerance=tolerance_val)
@@ -744,7 +1157,13 @@ class App120Handler(BaseHTTPRequestHandler):
                     if metric_label == "IOU":
                         base_offsets = [-3, -2, -1, 0, 1, 2, 3]
                         xyz_offsets = [o for o in base_offsets if not offset_has_non_news.get(o, False)] if xyz_enabled else base_offsets
+                        # Joker: XYZ tam kapsam
+                        entry_idx = effective_entries.index(entry) if entry in effective_entries else -1
+                        if entry_idx >= 0 and entry_idx in joker_indices:
+                            xyz_offsets = base_offsets[:]
                         xyz_text = ", ".join((f"+{o}" if o > 0 else str(o)) for o in xyz_offsets) if xyz_offsets else "-"
+                        all_xyz_sets.append(set(xyz_offsets))
+                        all_file_names.append(filename)
 
                     if summary_mode:
                         elimination_rows = []
@@ -761,7 +1180,9 @@ class App120Handler(BaseHTTPRequestHandler):
                     else:
                         xyz_line = ""
                         if metric_label == "IOU" and xyz_enabled:
-                            xyz_line = f"<div><strong>XYZ Kümesi:</strong> {html.escape(xyz_text)}</div>"
+                            entry_idx = effective_entries.index(entry) if entry in effective_entries else -1
+                            joker_tag = " (Joker)" if entry_idx >= 0 and entry_idx in joker_indices else ""
+                            xyz_line = f"<div><strong>XYZ Kümesi{joker_tag}:</strong> {html.escape(xyz_text)}</div>"
 
                         info = (
                             f"<div class='card'>"
@@ -805,8 +1226,12 @@ class App120Handler(BaseHTTPRequestHandler):
                             "</tr>"
                         )
                     table = "<table><thead>" + header + "</thead><tbody>" + "".join(rows_summary) + "</tbody></table>"
-                    body = "<div class='card'>" + table + "</div>"
+                    pattern_html = render_pattern_panel(all_xyz_sets, allow_zero_after_start=True, file_names=all_file_names, joker_indices=joker_indices) if pattern_enabled else ""
+                    body = "<div class='card'>" + table + "</div>" + pattern_html
                 else:
+                    # Non-summary: tüm dosya kartları + varsa örüntü paneli
+                    if pattern_enabled:
+                        sections.append(render_pattern_panel(all_xyz_sets, allow_zero_after_start=True, file_names=all_file_names, joker_indices=joker_indices))
                     body = "\n".join(sections)
                 tab_key = "iov" if self.path == "/iov" else "iou"
                 title = f"app120 {metric_label}"
