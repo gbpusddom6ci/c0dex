@@ -843,12 +843,12 @@ class App72Handler(BaseHTTPRequestHandler):
                         "<div class='card'>"
                         "<h3>Joker Seçimi</h3>"
                         "<div>Analize başlamadan önce 'Joker' dosyaları seç. Joker dosyalar XYZ kümesinde tüm offsetleri (-3..+3) içerir.</div>"
-                        + table +
                         f"<form method='post' action='/iou' enctype='multipart/form-data'>"
-                        + "".join(hidden_fields + preserved) +
-                        "<div style='margin-top:12px;'><button type='submit'>Analizi Başlat</button></div>"
-                        "</form>"
-                        "</div>"
+                        + table
+                        + "".join(hidden_fields + preserved)
+                        + "<div style='margin-top:12px;'><button type='submit'>Analizi Başlat</button></div>"
+                        + "</form>"
+                        + "</div>"
                     )
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
