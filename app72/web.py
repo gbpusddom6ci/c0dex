@@ -579,8 +579,8 @@ def render_pattern_panel(
         return st
 
     domain = {-3, -2, -1, 0, 1, 2, 3}
-    # 1) Üçlü kümeleri (0'sız) ve dosya uyumunu baz alarak renk ata
-    token_colors: Dict[Tuple[int, int], str] = {}
+    # 1) Üçlü kümeleri (0'sız) ve dosya uyumunu baz alarak blok rengi ata (başlangıç index'i -> renk)
+    triple_starts: Dict[Tuple[int, int], str] = {}
     if file_names and len(file_names) >= 3:
         triples: Dict[Tuple[int, int, int, str, str, str], List[Tuple[int, int]]] = {}
         for li, seq in enumerate(patterns):
@@ -588,7 +588,6 @@ def render_pattern_panel(
                 a, b, c = seq[i], seq[i+1], seq[i+2]
                 if 0 in (a, b, c):
                     continue
-                # Dosya üçlüsü
                 f1 = file_names[i] if i < len(file_names) else None
                 f2 = file_names[i+1] if i+1 < len(file_names) else None
                 f3 = file_names[i+2] if i+2 < len(file_names) else None
@@ -600,7 +599,6 @@ def render_pattern_panel(
         for key, occs in triples.items():
             if len(occs) < 2:
                 continue
-            # Deterministik "rastgele" renk
             s = str(key)
             try:
                 import hashlib
@@ -608,36 +606,60 @@ def render_pattern_panel(
             except Exception:
                 hv = abs(hash(s))
             hue = hv % 360
-            color = f"hsl({hue}, 90%, 85%)"
+            # Daha saydam bir opaklık: alpha ~ 0.28, biraz daha koyu lightness ile
+            color = f"hsla({hue}, 85%, 60%, 0.28)"
             for li, i in occs:
-                for k in (0, 1, 2):
-                    pos = i + k
-                    # İlk atanmış rengi koru (çakışma durumunda)
-                    token_colors.setdefault((li, pos), color)
+                # Başlangıç konumuna rengi ata (çakışmalarda ilk kazanır)
+                triple_starts.setdefault((li, i), color)
 
     lines: List[str] = []
     for idx_line, seq in enumerate(patterns):
         parts: List[str] = []
-        for i, v in enumerate(seq):
+        i = 0
+        while i < len(seq):
             name = None
             if file_names and 0 <= i < len(file_names):
                 name = file_names[i]
             tip = name or ""
             if joker_indices and i in joker_indices:
                 tip = (tip + " (Joker)").strip()
+            v = seq[i]
             token = html.escape(_fmt_off(v))
             if tip:
-                base = (
-                    f"<span class='pat-token' title='{html.escape(tip)}' data-tip='{html.escape(tip)}'>"
-                    f"{token}</span>"
-                )
+                def token_html(idx:int) -> str:
+                    nm = file_names[idx] if file_names and 0 <= idx < len(file_names) else ""
+                    tp = nm or ""
+                    if joker_indices and idx in joker_indices:
+                        tp = (tp + " (Joker)").strip()
+                    tk = html.escape(_fmt_off(seq[idx]))
+                    if tp:
+                        return (
+                            f"<span class='pat-token' title='{html.escape(tp)}' data-tip='{html.escape(tp)}'>{tk}</span>"
+                        )
+                    return f"<span class='pat-token'>{tk}</span>"
             else:
-                base = f"<span class='pat-token'>{token}</span>"
-            # Üçlü renklendirme uygula (varsa)
-            color = token_colors.get((idx_line, i))
-            if color and v != 0:
-                base = f"<span style='background:{html.escape(color)}; border-radius:4px; padding:0 2px;'>{base}</span>"
-            parts.append(base)
+                def token_html(idx:int) -> str:
+                    tk = html.escape(_fmt_off(seq[idx]))
+                    return f"<span class='pat-token'>{tk}</span>"
+
+            # Eğer bu pozisyon üçlü başlangıcı ise, üç tokenı ve iki virgülü tek blokta boya
+            color = triple_starts.get((idx_line, i))
+            if color and i + 2 < len(seq):
+                block = (
+                    f"<span style='background-color:{html.escape(color)}; border-radius:4px; padding:0 3px;'>"
+                    f"{token_html(i)}, {token_html(i+1)}, {token_html(i+2)}"
+                    f"</span>"
+                )
+                parts.append(block)
+                i += 3
+                if i < len(seq):
+                    parts.append(", ")
+                continue
+            # aksi halde tek token
+            parts.append(token_html(i))
+            i += 1
+            if i < len(seq):
+                parts.append(", ")
         label = ", ".join(parts)
         st = _build_state_for_seq(seq)
         opts = _allowed_values_for_state(st, domain, allow_zero_after_start)
