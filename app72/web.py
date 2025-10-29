@@ -162,8 +162,7 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
         font-size:12px;
         z-index:20;
       }}
-      .pat-token.hit{{ background: #ffeaa7; box-shadow: inset 0 0 0 1px #d6b000; border-bottom-color: transparent; }}
-      .pat-hint{{ color:#555; font-size:13px; margin:6px 0 8px; }}
+      /* triple highlight colors are applied inline via style attribute */
     </style>
   </head>
   <body>
@@ -580,12 +579,44 @@ def render_pattern_panel(
         return st
 
     domain = {-3, -2, -1, 0, 1, 2, 3}
+    # 1) Üçlü kümeleri (0'sız) ve dosya uyumunu baz alarak renk ata
+    token_colors: Dict[Tuple[int, int], str] = {}
+    if file_names and len(file_names) >= 3:
+        triples: Dict[Tuple[int, int, int, str, str, str], List[Tuple[int, int]]] = {}
+        for li, seq in enumerate(patterns):
+            for i in range(0, max(0, len(seq) - 2)):
+                a, b, c = seq[i], seq[i+1], seq[i+2]
+                if 0 in (a, b, c):
+                    continue
+                # Dosya üçlüsü
+                f1 = file_names[i] if i < len(file_names) else None
+                f2 = file_names[i+1] if i+1 < len(file_names) else None
+                f3 = file_names[i+2] if i+2 < len(file_names) else None
+                if not (f1 and f2 and f3):
+                    continue
+                key = (a, b, c, f1, f2, f3)
+                triples.setdefault(key, []).append((li, i))
+        # Renkleri ata (yalnız en az 2 yerde geçen üçlüler)
+        for key, occs in triples.items():
+            if len(occs) < 2:
+                continue
+            # Deterministik "rastgele" renk
+            s = str(key)
+            try:
+                import hashlib
+                hv = int(hashlib.md5(s.encode('utf-8')).hexdigest()[:6], 16)
+            except Exception:
+                hv = abs(hash(s))
+            hue = hv % 360
+            color = f"hsl({hue}, 90%, 85%)"
+            for li, i in occs:
+                for k in (0, 1, 2):
+                    pos = i + k
+                    # İlk atanmış rengi koru (çakışma durumunda)
+                    token_colors.setdefault((li, pos), color)
+
     lines: List[str] = []
     for idx_line, seq in enumerate(patterns):
-        # Hafifçe farklılaştırılmış satır rengi
-        hue = (idx_line * 47) % 360
-        bg = f"hsl({hue}, 80%, 97%)"
-        border = f"hsl({hue}, 65%, 48%)"
         parts: List[str] = []
         for i, v in enumerate(seq):
             name = None
@@ -596,22 +627,22 @@ def render_pattern_panel(
                 tip = (tip + " (Joker)").strip()
             token = html.escape(_fmt_off(v))
             if tip:
-                token_html = (
-                    f"<span class='pat-token' title='{html.escape(tip)}' data-tip='{html.escape(tip)}' "
-                    f"data-file-idx='{i}' data-off='{v}'>{token}</span>"
+                base = (
+                    f"<span class='pat-token' title='{html.escape(tip)}' data-tip='{html.escape(tip)}'>"
+                    f"{token}</span>"
                 )
             else:
-                token_html = f"<span class='pat-token' data-file-idx='{i}' data-off='{v}'>{token}</span>"
-            parts.append(token_html)
+                base = f"<span class='pat-token'>{token}</span>"
+            # Üçlü renklendirme uygula (varsa)
+            color = token_colors.get((idx_line, i))
+            if color and v != 0:
+                base = f"<span style='background:{html.escape(color)}; border-radius:4px; padding:0 2px;'>{base}</span>"
+            parts.append(base)
         label = ", ".join(parts)
         st = _build_state_for_seq(seq)
         opts = _allowed_values_for_state(st, domain, allow_zero_after_start)
         cont = ", ".join(_fmt_off(v) for v in opts) if opts else "-"
-        lines.append(
-            f"<div class='pat-line' style='background:{bg}; border-left:4px solid {border}; padding:4px 6px; border-radius:6px;'>"
-            f"{label} (devam: {html.escape(cont)})"
-            f"</div>"
-        )
+        lines.append(f"<div class='pat-line'>{label} (devam: {html.escape(cont)})</div>")
     # Son değerlerin özeti (benzersiz, sıralı)
     last_vals = [seq[-1] for seq in patterns if seq]
     order = { -3:0, -2:1, -1:2, 0:3, 1:4, 2:5, 3:6 }
@@ -625,34 +656,7 @@ def render_pattern_panel(
         ", ".join(_fmt_off(v) for v in unique_last_sorted) if unique_last_sorted else "-"
     ) + "</div>"
     info = f"<div><strong>Toplam örüntü:</strong> {len(patterns)} (ilk {min(len(patterns), PATTERN_MAX_PATHS)})</div>"
-    hint = (
-        "<div class='pat-hint'>Bir sayıya tıklayın: aynı dosya+offset tüm örüntülerde vurgulanır. Tekrar tıklayınca temizlenir.</div>"
-    )
-    script = (
-        "<script>(function(){\n"
-        "var panel=document.getElementById('pattern-panel'); if(!panel) return;\n"
-        "var active=null;\n"
-        "function apply(){\n"
-        "  var toks=panel.querySelectorAll('.pat-token');\n"
-        "  toks.forEach(function(t){\n"
-        "    var fi=t.getAttribute('data-file-idx'); var of=t.getAttribute('data-off');\n"
-        "    if(active && fi===active.fi && of===active.of){ t.classList.add('hit'); } else { t.classList.remove('hit'); }\n"
-        "  });\n"
-        "}\n"
-        "panel.addEventListener('click', function(e){\n"
-        "  var t=e.target.closest('.pat-token'); if(!t) return;\n"
-        "  var fi=t.getAttribute('data-file-idx'); var of=t.getAttribute('data-off');\n"
-        "  if(active && active.fi===fi && active.of===of){ active=null; } else { active={fi:fi, of:of}; }\n"
-        "  apply();\n"
-        "});\n"
-        "})();</script>"
-    )
-    return (
-        "<div class='card'>"
-        "<h3>Örüntüleme</h3>"
-        f"<div id='pattern-panel'>" + info + last_line + hint + "".join(lines) + "</div>" + script +
-        "</div>"
-    )
+    return "<div class='card'><h3>Örüntüleme</h3>" + info + last_line + "".join(lines) + "</div>"
 
 
 def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]]:
