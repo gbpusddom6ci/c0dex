@@ -951,12 +951,30 @@ class App72Handler(BaseHTTPRequestHandler):
                         _hidden_bool("pattern_mode", pattern_enabled),
                         "<input type='hidden' name='confirm_iou' value='1'>",
                     ]
+                    
+                    # Önceki sonuçları da koru (eğer varsa)
+                    if previous_results_html:
+                        # previous_results_html zaten decode edilmiş durumda
+                        preserved.append(f"<input type='hidden' name='previous_results_html' value='{base64.b64encode(previous_results_html.encode(\"utf-8\")).decode(\"ascii\")}'>")
 
                     table = (
                         "<table><thead><tr><th>#</th><th>Dosya</th><th>Joker</th></tr></thead>"
                         f"<tbody>{''.join(file_rows)}</tbody></table>"
                     )
+                    
+                    # Önceki sonuçları da göster (eğer varsa)
+                    previous_section = ""
+                    if previous_results_html:
+                        # previous_results_html zaten body_without_form'dan geliyor, formlar yok
+                        previous_section = (
+                            "<div style='margin-bottom:32px; padding-bottom:24px; border-bottom:2px solid #ddd;'>"
+                            "<h3 style='color:#888; margin-bottom:16px;'>Önceki Analizler</h3>"
+                            f"{previous_results_html}"
+                            "</div>"
+                        )
+                    
                     body = (
+                        previous_section +
                         "<div class='card'>"
                         "<h3>Joker Seçimi</h3>"
                         "<div>Analize başlamadan önce 'Joker' dosyaları seç. Joker dosyalar XYZ kümesinde tüm offsetleri (-3..+3) içerir.</div>"
