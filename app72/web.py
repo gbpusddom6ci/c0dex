@@ -162,8 +162,8 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
         font-size:12px;
         z-index:20;
       }}
-      .pat-token.hit{ background: #ffeaa7; box-shadow: inset 0 0 0 1px #d6b000; border-bottom-color: transparent; }
-      .pat-hint{ color:#555; font-size:13px; margin:6px 0 8px; }
+      .pat-token.hit{{ background: #ffeaa7; box-shadow: inset 0 0 0 1px #d6b000; border-bottom-color: transparent; }}
+      .pat-hint{{ color:#555; font-size:13px; margin:6px 0 8px; }}
     </style>
   </head>
   <body>
