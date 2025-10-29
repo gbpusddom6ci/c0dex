@@ -153,6 +153,48 @@ def find_first_friday_end_ts(candles: List[Candle]) -> Optional[datetime]:
             return candle.ts
     return None
 
+def find_first_sunday_date(candles: List[Candle]) -> Optional[date]:
+    """
+    Returns the first distinct Sunday date encountered in the dataset.
+    """
+    for candle in candles:
+        if candle.ts.weekday() == 6:  # Sunday
+            return candle.ts.date()
+    return None
+
+def find_first_week_friday_1648(candles: List[Candle]) -> Optional[datetime]:
+    """
+    Returns the Friday 16:48 timestamp that falls within the first week window
+    (from the first Sunday to the second Sunday). If week boundaries are
+    ambiguous or missing, falls back conservatively:
+      - If only first Sunday exists, use [first_sunday, first_sunday+7 days)
+      - If no Sunday found, returns None (do not exclude any 16:48)
+    """
+    first_sun = find_first_sunday_date(candles)
+    second_sun = find_second_sunday_date(candles)
+    if first_sun is None and second_sun is None:
+        return None
+    # Build bounds
+    from datetime import timedelta as _td
+    lower = first_sun
+    upper = second_sun or (first_sun + _td(days=7) if first_sun else None)
+    if lower is None:
+        # No first Sunday but we have a second Sunday: treat the 7 days before second Sunday
+        upper = second_sun
+        lower = second_sun - _td(days=7) if second_sun else None
+    # Scan for Friday 16:48 inside (lower, upper)
+    for candle in candles:
+        ts = candle.ts
+        d = ts.date()
+        if ts.weekday() == 4 and ts.hour == 16 and ts.minute == 48:
+            if lower and upper:
+                if lower <= d < upper:
+                    return ts
+            elif lower and not upper:
+                if lower <= d < (lower + _td(days=7)):
+                    return ts
+    return None
+
 
 def find_start_index(candles: List[Candle], start_tod: dtime) -> Tuple[int, str]:
     if not candles:
@@ -632,7 +674,8 @@ def detect_iou_candles(
         empty_error="IOU analizi için mum verisi gerekli",
     )
     second_sunday = find_second_sunday_date(candles)
-    first_friday_1648 = find_first_friday_end_ts(candles)
+    # More robust: determine "first week" Friday 16:48 within Sunday window
+    first_friday_1648 = find_first_week_friday_1648(candles)
     for offset in report.offsets:
         if not offset.hits:
             continue
