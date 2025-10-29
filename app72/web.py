@@ -145,6 +145,23 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
       .tabs{{display:flex; gap:12px; margin-bottom:12px;}}
       .tabs a{{text-decoration:none; color:#0366d6; padding:6px 8px; border-radius:6px;}}
       .tabs a.active{{background:#e6f2ff; color:#024ea2;}}
+      /* Pattern tokens */
+      .pat-line{{margin:2px 0;}}
+      .pat-token{{display:inline-block; padding:0 2px; border-bottom:1px dashed #aaa; cursor:help; position:relative;}}
+      .pat-token[data-tip]:hover::after{{
+        content: attr(data-tip);
+        position:absolute;
+        bottom:100%;
+        left:0;
+        transform: translateY(-4px);
+        background:rgba(0,0,0,0.85);
+        color:#fff;
+        padding:4px 6px;
+        border-radius:4px;
+        white-space:nowrap;
+        font-size:12px;
+        z-index:20;
+      }}
     </style>
   </head>
   <body>
@@ -537,7 +554,12 @@ def build_patterns_from_xyz_lists(xyz_sets: List[Set[int]], allow_zero_after_sta
     return results[:max_paths]
 
 
-def render_pattern_panel(xyz_sets: List[Set[int]], allow_zero_after_start: bool) -> str:
+def render_pattern_panel(
+    xyz_sets: List[Set[int]],
+    allow_zero_after_start: bool,
+    file_names: Optional[List[str]] = None,
+    joker_indices: Optional[Set[int]] = None,
+) -> str:
     patterns = build_patterns_from_xyz_lists(xyz_sets, allow_zero_after_start=allow_zero_after_start)
     if not patterns:
         return "<div class='card'><h3>Örüntüleme</h3><div>Örüntü bulunamadı.</div></div>"
@@ -558,11 +580,25 @@ def render_pattern_panel(xyz_sets: List[Set[int]], allow_zero_after_start: bool)
     domain = {-3, -2, -1, 0, 1, 2, 3}
     lines: List[str] = []
     for seq in patterns:
-        label = ", ".join(_fmt_off(v) for v in seq)
+        parts: List[str] = []
+        for i, v in enumerate(seq):
+            name = None
+            if file_names and 0 <= i < len(file_names):
+                name = file_names[i]
+            tip = name or ""
+            if joker_indices and i in joker_indices:
+                tip = (tip + " (Joker)").strip()
+            token = html.escape(_fmt_off(v))
+            if tip:
+                token_html = f"<span class='pat-token' title='{html.escape(tip)}' data-tip='{html.escape(tip)}'>{token}</span>"
+            else:
+                token_html = f"<span class='pat-token'>{token}</span>"
+            parts.append(token_html)
+        label = ", ".join(parts)
         st = _build_state_for_seq(seq)
         opts = _allowed_values_for_state(st, domain, allow_zero_after_start)
         cont = ", ".join(_fmt_off(v) for v in opts) if opts else "-"
-        lines.append(f"<div>{html.escape(label)} (devam: {html.escape(cont)})</div>")
+        lines.append(f"<div class='pat-line'>{label} (devam: {html.escape(cont)})</div>")
     # Son değerlerin özeti (benzersiz, sıralı)
     last_vals = [seq[-1] for seq in patterns if seq]
     order = { -3:0, -2:1, -1:2, 0:3, 1:4, 2:5, 3:6 }
@@ -876,6 +912,7 @@ class App72Handler(BaseHTTPRequestHandler):
                 sections: List[str] = []
                 summary_entries: List[Dict[str, Any]] = []
                 all_xyz_sets: List[Set[int]] = []
+                all_file_names: List[str] = []
                 for idx_entry, entry in enumerate(effective_entries):
                     entry_data = entry.get("data")
                     if isinstance(entry_data, (bytes, bytearray)):
@@ -987,6 +1024,7 @@ class App72Handler(BaseHTTPRequestHandler):
                         xyz_offsets = base_offsets[:]
                     xyz_text = ", ".join((f"+{o}" if o > 0 else str(o)) for o in xyz_offsets) if xyz_offsets else "-"
                     all_xyz_sets.append(set(xyz_offsets))
+                    all_file_names.append(name)
 
                     if summary_mode:
                         elimination_rows = []
@@ -1043,12 +1081,12 @@ class App72Handler(BaseHTTPRequestHandler):
                             "</tr>"
                         )
                     table = "<table><thead>" + header + "</thead><tbody>" + "".join(rows_summary) + "</tbody></table>"
-                    pattern_html = render_pattern_panel(all_xyz_sets, allow_zero_after_start=True) if pattern_enabled else ""
+                    pattern_html = render_pattern_panel(all_xyz_sets, allow_zero_after_start=True, file_names=all_file_names, joker_indices=joker_indices) if pattern_enabled else ""
                     body = "<div class='card'>" + table + "</div>" + pattern_html
                 else:
                     # Non-summary: tüm dosya kartları + varsa örüntü paneli
                     if pattern_enabled:
-                        sections.append(render_pattern_panel(all_xyz_sets, allow_zero_after_start=True))
+                        sections.append(render_pattern_panel(all_xyz_sets, allow_zero_after_start=True, file_names=all_file_names, joker_indices=joker_indices))
                     body = "\n".join(sections)
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
