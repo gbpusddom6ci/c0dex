@@ -644,8 +644,9 @@ def render_iov_index() -> bytes:
     return page("app120 - IOV", body, active_tab="iov")
 
 
-def render_iou_index() -> bytes:
-    body = """
+def render_iou_form() -> str:
+    """IOU formunu HTML string olarak döndürür (sonuç sayfasında kullanım için)"""
+    return """
     <div class='card'>
       <form method='post' action='/iou' enctype='multipart/form-data'>
         <div class='row'>
@@ -702,6 +703,10 @@ def render_iou_index() -> bytes:
     <p>IOU mumlar, limit üzerindeki OC ve PrevOC değerlerinin aynı işareti paylaştığı durumlarda raporlanır. Aynı anda birden fazla CSV seçebilirsin.</p>
     <p><strong>Not:</strong> 18:00 mumları IOU üretmez; 20:00 mumları IOU olamaz. Cuma 16:00 mumları IOU sonuçlarından hariç tutulur.</p>
     """
+
+
+def render_iou_index() -> bytes:
+    body = render_iou_form()
     return page("app120 - IOU", body, active_tab="iou")
 
 
@@ -949,6 +954,17 @@ class App120Handler(BaseHTTPRequestHandler):
                 summary_mode = metric_label == "IOU" and "xyz_summary" in form
                 pattern_enabled = metric_label == "IOU" and "pattern_mode" in form
                 confirm_iou = metric_label == "IOU" and "confirm_iou" in form
+                
+                # Önceki sonuçları al (eğer varsa) - sadece IOU için
+                previous_results_html = ""
+                if metric_label == "IOU":
+                    previous_results_html = form.get("previous_results_html", {}).get("value", "")
+                    if previous_results_html:
+                        try:
+                            previous_results_html = base64.b64decode(previous_results_html.encode("ascii")).decode("utf-8")
+                        except Exception:
+                            previous_results_html = ""
+                
                 tolerance_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
                 if metric_label == "IOU":
                     try:
@@ -1012,12 +1028,31 @@ class App120Handler(BaseHTTPRequestHandler):
                         _hidden_bool("pattern_mode", pattern_enabled),
                         "<input type='hidden' name='confirm_iou' value='1'>",
                     ]
+                    
+                    # Önceki sonuçları da koru (eğer varsa)
+                    if previous_results_html:
+                        # previous_results_html zaten decode edilmiş durumda
+                        encoded = base64.b64encode(previous_results_html.encode("utf-8")).decode("ascii")
+                        preserved.append(f"<input type='hidden' name='previous_results_html' value='{html.escape(encoded)}'>")
 
                     table = (
                         "<table><thead><tr><th>#</th><th>Dosya</th><th>Joker</th></tr></thead>"
                         f"<tbody>{''.join(file_rows)}</tbody></table>"
                     )
+                    
+                    # Önceki sonuçları da göster (eğer varsa)
+                    previous_section = ""
+                    if previous_results_html:
+                        # previous_results_html zaten body_without_form'dan geliyor, formlar yok
+                        previous_section = (
+                            "<div style='margin-bottom:32px; padding-bottom:24px; border-bottom:2px solid #ddd;'>"
+                            "<h3 style='color:#888; margin-bottom:16px;'>Önceki Analizler</h3>"
+                            f"{previous_results_html}"
+                            "</div>"
+                        )
+                    
                     body = (
+                        previous_section +
                         "<div class='card'>"
                         "<h3>Joker Seçimi</h3>"
                         "<div>Analize başlamadan önce 'Joker' dosyaları seç. Joker dosyalar XYZ kümesinde tüm offsetleri (-3..+3) içerir.</div>"
@@ -1227,12 +1262,55 @@ class App120Handler(BaseHTTPRequestHandler):
                         )
                     table = "<table><thead>" + header + "</thead><tbody>" + "".join(rows_summary) + "</tbody></table>"
                     pattern_html = render_pattern_panel(all_xyz_sets, allow_zero_after_start=True, file_names=all_file_names, joker_indices=joker_indices) if pattern_enabled else ""
-                    body = "<div class='card'>" + table + "</div>" + pattern_html
+                    current_result = "<div class='card'>" + table + "</div>" + pattern_html
                 else:
                     # Non-summary: tüm dosya kartları + varsa örüntü paneli
                     if pattern_enabled:
                         sections.append(render_pattern_panel(all_xyz_sets, allow_zero_after_start=True, file_names=all_file_names, joker_indices=joker_indices))
-                    body = "\n".join(sections)
+                    current_result = "\n".join(sections)
+                
+                # Yeni analiz sonucunu bir bölüm içine al (yalnız IOU için)
+                if metric_label == "IOU":
+                    from datetime import datetime
+                    result_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    result_section = (
+                        f"<div id='result_{result_id}' style='margin-bottom:32px; padding-bottom:24px; border-bottom:2px solid #ddd;'>"
+                        f"<h3 style='color:#0366d6; margin-bottom:16px;'>Analiz #{result_id}</h3>"
+                        f"{current_result}"
+                        f"</div>"
+                    )
+                    
+                    # Önceki sonuçları ve yeni sonucu birleştir (yeni sonuç üstte)
+                    if previous_results_html:
+                        body_without_form = result_section + previous_results_html
+                    else:
+                        body_without_form = result_section
+                    
+                    # Sonuçların altına tekrar IOU formunu ekle (önceki sonuçları da hidden field olarak taşı)
+                    # Önce body_without_form'u encode edip sakla (form eklenmeden önceki hali)
+                    body_encoded = base64.b64encode(body_without_form.encode("utf-8")).decode("ascii")
+                    
+                    form_html = render_iou_form()
+                    # Form içindeki form tag'ini kaldırıp sadece içeriği al
+                    form_content = form_html.replace("<form method='post' action='/iou' enctype='multipart/form-data'>", "").replace("</form>", "").strip()
+                    
+                    form_section = (
+                        "<hr style='margin:32px 0; border:none; border-top:2px solid #ddd;'>"
+                        "<h2 style='margin-top:24px;'>Yeni Analiz</h2>"
+                        "<div class='card'>"
+                        "<form method='post' action='/iou' enctype='multipart/form-data'>"
+                        f"<input type='hidden' name='previous_results_html' value='{body_encoded}'>"
+                        + form_content +
+                        "</form>"
+                        "</div>"
+                    )
+                    
+                    # Final body: önceki sonuçlar + yeni sonuç + form
+                    body = body_without_form + form_section
+                else:
+                    # IOV için normal davranış
+                    body = current_result
+                
                 tab_key = "iov" if self.path == "/iov" else "iou"
                 title = f"app120 {metric_label}"
                 self.send_response(200)
