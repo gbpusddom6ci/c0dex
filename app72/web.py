@@ -541,10 +541,28 @@ def render_pattern_panel(xyz_sets: List[Set[int]], allow_zero_after_start: bool)
     patterns = build_patterns_from_xyz_lists(xyz_sets, allow_zero_after_start=allow_zero_after_start)
     if not patterns:
         return "<div class='card'><h3>Örüntüleme</h3><div>Örüntü bulunamadı.</div></div>"
+    def _build_state_for_seq(seq: List[int]) -> Dict[str, Any]:
+        st: Dict[str, Any] = {
+            "mode": "free",
+            "sign": None,
+            "dir": None,
+            "pos": None,
+            "allow_zero_next": False,
+            "prev": None,
+            "seq": [],
+        }
+        for i, v in enumerate(seq):
+            st = _advance_state(st, v, i, allow_zero_after_start)
+        return st
+
+    domain = {-3, -2, -1, 0, 1, 2, 3}
     lines: List[str] = []
     for seq in patterns:
         label = ", ".join(_fmt_off(v) for v in seq)
-        lines.append(f"<div>{html.escape(label)}</div>")
+        st = _build_state_for_seq(seq)
+        opts = _allowed_values_for_state(st, domain, allow_zero_after_start)
+        cont = ", ".join(_fmt_off(v) for v in opts) if opts else "-"
+        lines.append(f"<div>{html.escape(label)} (devam: {html.escape(cont)})</div>")
     # Son değerlerin özeti (benzersiz, sıralı)
     last_vals = [seq[-1] for seq in patterns if seq]
     order = { -3:0, -2:1, -1:2, 0:3, 1:4, 2:5, 3:6 }
