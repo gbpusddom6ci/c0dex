@@ -154,6 +154,7 @@ def find_first_friday_end_ts(candles: List[Candle]) -> Optional[datetime]:
     return None
 
 
+
 def find_start_index(candles: List[Candle], start_tod: dtime) -> Tuple[int, str]:
     if not candles:
         return 0, "no-data"
