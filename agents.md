@@ -4,6 +4,8 @@ Bu rehber, projedeki tüm alt uygulamaları (app321, app48, app72, app80, app120
 
 ## 1. En Güncel Özellikler
 
+- **2025-10 – IOU örüntüleme tüm applerde:** app48/app72/app80/app90/app96/app120/app321 IOU sekmelerine “Örüntüleme” (pattern) seçeneği eklendi. Kurallar app72 ile aynıdır; Joker olarak işaretlenen dosyaların XYZ kümesi tüm offsetleri (-3..+3) kapsar. Performans: beam 512, en fazla 1000 örüntü (ilk 1000 gösterilir).
+- **2025-10 – IOU stacked analysis (tüm appler):** IOU sonuçları sayfada birikmeli (stacked) şekilde görüntülenir. Her yeni analiz “Analiz #YYYYMMDD_HHMMSS” başlığıyla üstte eklenir, sayfanın altında “Yeni Analiz” formu yeniden açılır. Önceki sonuçlar base64 ile `previous_results_html` hidden alanında korunur; Joker seçimi ekranı da önceki analizleri gösterir. Not: app120’de stacked analysis sadece IOU için uygulanır (IOV klasik davranışta kalır).
 - **2025-10 – app72 IOU örüntüleme + Joker + tooltip:** Çoklu CSV’den gelen XYZ kümelerinden kurallı örüntü (pattern) üretimi eklendi. Yükleme sonrası “Joker Seçimi” adımıyla dosyalar joker olarak işaretlenebilir (XYZ = tüm offsetler). Örüntü paneli; devam önerileri, “Son değerler” özeti ve her adımda imleç üstünde kaynak dosya (ve Joker) bilgisini tooltip olarak gösterir. Performans sınırlamaları: beam 512, en fazla 1000 örüntü.
 - **2025-08 – app48/app72/app80/app321 IOU sekmeleri:** Her timeframe için IOU taraması eklendi; formlar çoklu CSV yüklemelerini destekler ve sonuçlar dosya bazlı kartlarda rapor edilir.
 - **2025-08 – app120 IOV/IOU çoklu dosya taraması:** IOV ve IOU web sekmeleri tek seferde birden fazla CSV dosyası kabul eder; her dosyanın sonuçları ayrı kartlarda raporlanır. Limit, dizi ve zaman dilimi ayarı tüm yüklemelere aynı anda uygulanır.
@@ -26,7 +28,7 @@ Bu rehber, projedeki tüm alt uygulamaları (app321, app48, app72, app80, app120
 
 ### 2.2 Dizin Yapısı (Yeni → Eski)
 - `app120/` – 120 dakikalık analiz paketi (counter, converter, web UI).
-- `app80/`, `app72/`, `app48/`, `app321/` – diğer timeframe uygulamaları (CLI + web).
+- `app90/`, `app96/`, `app80/`, `app72/`, `app48/`, `app321/` – diğer timeframe uygulamaları (CLI + web).
 - `appsuite/` – Tüm uygulamaları tek host altında reverse proxy’leyen birleşik arayüz.
 - `landing/` – Basit tanıtım sayfası, uygulama linklerini listeler.
 - `calendar_md/` – ForexFactory tarzı markdown takvimlerini JSON’a dönüştüren CLI + web aracı.
@@ -256,6 +258,13 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
 ### 5.6 Ortak Varlıklar
 - `favicon` paketi tüm web arayüzlerinde kullanılan favicon ve manifest dosyalarını sunar (`render_head_links` + `try_load_asset`).
 - Appsuite reverse proxy’si favicon isteklerini doğrudan bu paket üzerinden cevaplar; harici CDN gerektirmez.
+
+### 5.7 IOU Stacked Analysis (Birikmeli Görünüm)
+- Tüm uygulamalarda IOU sonuçları birikmeli (stacked) olarak aynı sayfada tutulur; en yeni analiz en üstte “Analiz #YYYYMMDD_HHMMSS” başlığıyla yer alır.
+- Sonuçların altına “Yeni Analiz” formu tekrar render edilir. Önceki sonuçlar base64 ile `previous_results_html` hidden alanında taşınır ve Joker seçimi adımında da “Önceki Analizler” bölümü olarak gösterilir.
+- Joker seçimi iki aşamalıdır: ilk aşamada yüklenen dosyalar base64 olarak saklanır (`csv_b64_i`, `csv_name_i`), ikinci aşamada analiz başlatılır. Joker işaretlenen dosyalar örüntülemede tüm offsetleri (-3..+3) kapsar.
+- Güvenlik başlıkları (_`_add_security_headers`_) yanıtlarla birlikte gönderilir.
+- Not: app120’de stacked analysis yalnız IOU sekmesi için uygulanır; IOV sekmesi klasik (tek sonuç) davranışındadır.
 
 ## 6. Veri Setleri ve Örnek Dosyalar
 - Repoda hazır CSV örnekleri bulunmuyor; test etmek için kendi veri setlerinizi eklemelisiniz.
