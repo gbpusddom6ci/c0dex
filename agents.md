@@ -34,6 +34,9 @@ Bu rehber, projedeki tüm alt uygulamaları (app321, app48, app72, app80, app120
 - `calendar_md/` – ForexFactory tarzı markdown takvimlerini JSON’a dönüştüren CLI + web aracı.
 - `favicon/` – Ortak favicon ve manifest varlıklarını sağlayan yardımcı paket.
 - `economic_calendar/` – Haber entegrasyonu için örnek JSON takvim dosyaları.
+- `agents/` – Rehberin uygulama başlıklarına ayrılmış kopyaları.
+- `ornek/` – Yerel geliştirme/test için manuel eklenmiş örnek CSV’ler (varsa).
+- `photos/` – Landing sayfasında kullanılan görseller.
 - Kök dizinde varsayılan CSV örnekleri yer almıyor; test için kendi veri setinizi eklemeniz gerekiyor.
 
 ### 2.3 Ortak Modül Kalıbı
@@ -68,7 +71,9 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
 - app48: 13:12–19:36 (19:36 dahil) arasında DC’ler normal mum kabul edilir.
 - app72: 18:00 (Pazar dahil), Cuma 16:48, (Pazar hariç) 19:12 ve 20:24, Cuma 16:00 DC olamaz.
 - app80: (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:40 (hafta kapanışı, ilk hafta dahil) DC olamaz.
-- app120: İstisna yok; yalnızca kapsayıcı kural uygulanır. Cuma 16:00 hafta kapanışı DC sayılmaz.
+- app90: 18:00; (Pazar hariç) 19:30; Cuma 16:30 DC olamaz.
+- app96: 18:00; (Pazar hariç) 19:36; Cuma 16:24 DC olamaz.
+- app120: 18:00 DC değildir; Cuma 16:00 hafta kapanışı DC sayılmaz.
 
 **Kapsayıcı Kural:** Bir sequence adımı DC’ye denk gelirse zaman damgası o DC mumuna yazılır.
 **Pozitif Offset İstisnası:** Offset +1, +2 ve +3 için başlangıç mumu DC ise ilgili offset özelinde normal mum gibi sayılır (DC kuralı uygulanmaz).
@@ -91,7 +96,14 @@ Bu yaklaşım, DC’lerin ardışık offset sütunlarını aynı zaman damgasın
 - `app321` (60m) pozitif offset başlangıçlarını DC olmayan mumlara kaydırır; DC istisnası Pazartesi–Cumartesi 13:00 ≤ saat ≤ 20:00 için geçerlidir ve bu aralıkta 20:00 mumu (Pazar hariç) daima normal kabul edilir.
 - `app72` ve `app80` (72m / 80m) aynı mantığı kendi dakika adımları ile uygular. Pozitif offset teorik hedefi DC ise sayaç uygun gerçek muma ilerleyip diziyi 72/80 dakikalık farkla korur.
 - `app48` (48m) sentetik mumlar üretir; pozitif offset hesaplaması yalnızca gerçek DC sayılan (Pazartesi–Cumartesi 13:12 ≤ saat ≤ 19:36) mumları atlar. Pazar günleri hariç bu saatlerdeki 18:00, 18:48 ve 19:36 slotları normal mum kabul edilir. Sentetik saatlerdeki DC istisnası korunur, bu sayede offset sütunları yine çakışmaz.
+- `app90` ve `app96` (90m / 96m) DC olmayan mumlar üzerinden sayar; kendi yasak slotları DC kabul edilmez.
 - Negatif offsetlerde veri zaten 18:00’dan önce bulunmadığından ekstra işleme gerek yoktur; mevcut tahmin mantığı olduğu gibi bırakılır.
+
+**Hafta Sonu Kapanış/Açılış (tahmin):**
+- `app72`: Cuma 16:00 kapanışı sonrası tahminler Pazar 18:00’a atlar.
+- `app80`: Cuma 16:40 kapanışı sonrası tahminler Pazar 18:00’a atlar.
+- `app120`: Cuma 16:00 kapanışı sonrası tahminler Pazar 18:00’a atlar.
+- `app48/app90/app96/app321`: Tahminler timeframe dakikasına göre ileri alınır; özel hafta sonu sıçraması uygulanmaz.
 
 ### 3.5 OC / PrevOC
 - **OC:** `Close - Open` (her gerçek mum için raporlanır, `+/-` işaretli 5 hane).
@@ -182,8 +194,10 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
 ### 4.4 app48 – 48 Dakikalık Analiz
 - **Özellikler:** Sentetik mum ekleme (ilk gün hariç, her gün 18:00 ve 18:48). Web portu 2020.
 - **IOU Tarama:** Limit, ± tolerans (varsayılan 0.005) ve dizi seçimleriyle çoklu CSV analiz eder; `limit + tolerans` eşiğini geçen satırlar sentetik/gerçek ayrımı `syn/real` etiketiyle gösterilerek raporlanır. 18:00, 18:48 ve 19:36 mumları IOU olarak hiçbir zaman listelenmez.
+- **Converter:** 12→48 web sekmesi (`/convert`) ile çoklu 12m CSV’ler 48m’e dönüştürülür (tek dosya doğrudan, çoklu dosya ZIP indirilir).
 - **Sentetik Mum Akışı:** 17:12 ve 19:36 gerçek mumları arasına 18:00/18:48 sentetik mumlar eklenir; open/close lineer şekilde setlenir (open = önceki close, close = sonraki open’a doğru interpolasyon, high/low min/max).
 - **DC İstisnası:** 13:12–19:36 (19:36 dahil) arası DC’ler normal kabul edilir.
+- **DC List Filtreleri:** Yalnız sentetik (`only_syn`) ya da yalnız gerçek (`only_real`) kayıtları listeleme seçenekleri mevcuttur.
 - **CLI Örnekleri:**
   ```bash
   python3 -m app48.main --csv data.csv --input-tz UTC-5 --sequence S2 --offset +1 --show-dc
@@ -200,6 +214,28 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
   ```bash
   python3 -m app321.main --csv data.csv --sequence S1 --offset -3 --show-dc
   python3 -m app321.main --csv data.csv --predict-next
+  ```
+
+### 4.6 app90 – 90 Dakikalık Analiz
+- **Modüller:** `counter.py`, `main.py` (30→90 converter), `web.py` (port 2190; sekmeler: Analiz, DC List, Matrix, IOU Tarama, 30→90 Converter).
+- **DC Kısıtları:** 18:00; (Pazar hariç) 19:30; Cuma 16:30 DC olamaz (ardışık DC yasağı geçerlidir).
+- **IOU Tarama:** Çoklu CSV; `limit + ± tolerans` eşiğini aşan, aynı işaretli OC/PrevOC ikililerini listeler. Yasak slotlar IOU olarak raporlanmaz.
+- **Converter:** 3 × 30m → 1 × 90m (open=ilk, close=son, high/low blok içi max/min); tek dosyada CSV, çoklu dosyada ZIP indirme.
+- **CLI Örnekleri:**
+  ```bash
+  python3 -m app90.counter --csv data.csv --sequence S1 --offset 0 --show-dc
+  python3 -m app90.main --csv 30m.csv --input-tz UTC-5 --output 90m.csv
+  ```
+
+### 4.7 app96 – 96 Dakikalık Analiz
+- **Modüller:** `counter.py`, `main.py` (12→96 converter), `web.py` (port 2196; sekmeler: Analiz, DC List, Matrix, IOU Tarama, 12→96 Converter).
+- **DC Kısıtları:** 18:00; (Pazar hariç) 19:36; Cuma 16:24 DC olamaz (ardışık DC yasağı geçerlidir).
+- **IOU Tarama:** Çoklu CSV; `limit + ± tolerans` eşiğini aşan, aynı işaretli OC/PrevOC ikililerini listeler. Yasak slotlar IOU olarak raporlanmaz.
+- **Converter:** 8 × 12m → 1 × 96m (open=ilk, close=son, high/low blok içi max/min); tek dosyada CSV, çoklu dosyada ZIP indirme.
+- **CLI Örnekleri:**
+  ```bash
+  python3 -m app96.counter --csv data.csv --sequence S2 --offset 0 --show-dc
+  python3 -m app96.main --csv 12m.csv --input-tz UTC-5 --output 96m.csv
   ```
 
 ## 5. Web Katmanı ve Birleşik Arayüzler
@@ -296,6 +332,6 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
 - CSV dosyaları büyükse (50 dosya yükleme) tarayıcı POST limitini aşmamak için boyut kontrolü yapın.
 - Yeni timeframe eklemek için en güncel örnek olarak `app120` mimarisini baz alın; ortak kurallar `CounterCandle` ve DC hesaplama fonksiyonlarıyla paylaşılabilir.
 - Render dağıtımında her web servisinin ayrı port’ta koştuğundan emin olun; `appsuite` tümünü proxy’lemek için en pratik çözüm.
- - Bilinen fark (spec ↔ web): app72 IOU XYZ eleme mantığı web katmanında “OR” ve “>” ile çalışır; çekirdek/rehber ise `|OC|` ve `|PrevOC| ≥ limit + tolerans` (AND) ister. Uyumlandırma ileride yapılacaktır.
+ - Bilinen fark (spec ↔ web): IOU web katmanlarında XYZ eleme mantığı “OR” ve “>” ile çalışır (hit’te haber yoksa ve `|OC| > limit+tolerans` veya `|PrevOC| > limit+tolerans` görülürse o offset elenir); çekirdek/rehber ise `|OC|` ve `|PrevOC| ≥ limit + tolerans` (AND) ister. Uyumlandırma ileride yapılacaktır.
 
 Bu doküman, proje kapsamı genişledikçe güncellenmelidir. Yeni bir özellik eklendiğinde, “En Güncel Özellikler” bölümüne tarih/özet eklemeyi unutmayın.
