@@ -1276,9 +1276,9 @@ class AppHandler(BaseHTTPRequestHandler):
                 f"</div>"
             )
             
-            # Önceki sonuçları ve yeni sonucu birleştir (yeni sonuç üstte)
+            # Önceki sonuçları ve yeni sonucu birleştir (ilk analiz üstte kalsın)
             if previous_results_html:
-                body_without_form = result_section + previous_results_html
+                body_without_form = previous_results_html + result_section
             else:
                 body_without_form = result_section
             
