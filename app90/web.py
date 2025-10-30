@@ -769,13 +769,17 @@ class App90Handler(BaseHTTPRequestHandler):
                 self.wfile.write(b"Upload too large (max 50 MB).")
                 return
             form = parse_multipart(self)
-            file_obj = form.get("csv")
-            if not file_obj or "data" not in file_obj:
+            file_obj = form.get("csv") or {}
+            file_entries = file_obj.get("files")
+            if not file_entries:
+                data_single = file_obj.get("data")
+                if data_single is not None:
+                    file_entries = [{"filename": file_obj.get("filename"), "data": data_single}]
+                else:
+                    file_entries = []
+            files_list = [entry for entry in file_entries if entry.get("data") is not None]
+            if not files_list and self.path != "/iou":
                 raise ValueError("CSV dosyası bulunamadı")
-            raw = file_obj["data"]
-            text = raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
-
-            files_list = file_obj.get("files") or [{"filename": file_obj.get("filename"), "data": file_obj.get("data")}]
             if len(files_list) > MAX_FILES:
                 self.send_response(413)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
@@ -979,6 +983,8 @@ class App90Handler(BaseHTTPRequestHandler):
                     return
 
                 effective_entries = b64_entries if b64_entries else files_list
+                if not effective_entries:
+                    raise ValueError("CSV dosyası bulunamadı")
                 joker_indices: Set[int] = set()
                 j = 0
                 # varsa joker_* işaretlerini topla
@@ -1215,6 +1221,10 @@ class App90Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(page("app90 IOU", body, active_tab="iou"))
                 return
+
+            primary_entry = files_list[0]
+            raw = primary_entry.get("data")
+            text = raw.decode("utf-8", errors="replace") if isinstance(raw, (bytes, bytearray)) else str(raw)
 
             candles = load_candles_from_text(text, CounterCandle)
             if not candles:

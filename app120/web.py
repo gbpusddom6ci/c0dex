@@ -818,7 +818,7 @@ class App120Handler(BaseHTTPRequestHandler):
             form = parse_multipart(self)
             file_field = form.get("csv") or {}
             files = [entry for entry in file_field.get("files", []) if entry.get("data") is not None]
-            if not files:
+            if not files and self.path != "/iou":
                 raise ValueError("CSV dosyası bulunamadı")
             if len(files) > MAX_FILES:
                 self.send_response(413)
@@ -1071,6 +1071,8 @@ class App120Handler(BaseHTTPRequestHandler):
                     return
 
                 effective_entries = b64_entries if b64_entries and metric_label == "IOU" else files
+                if not effective_entries:
+                    raise ValueError("CSV dosyası bulunamadı")
                 joker_indices: Set[int] = set()
                 if metric_label == "IOU":
                     j = 0

@@ -994,6 +994,8 @@ class App72Handler(BaseHTTPRequestHandler):
                     return
 
                 effective_entries = b64_entries if b64_entries else files_list
+                if not effective_entries:
+                    raise ValueError("CSV dosyası bulunamadı")
                 joker_indices: Set[int] = set()
                 j = 0
                 # varsa joker_* işaretlerini topla
