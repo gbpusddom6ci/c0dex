@@ -59,6 +59,11 @@ Pozitif Offset DC İstisnası: +1, +2, +3 başlangıç adımlarında başlangı�
 - Pozitif offsetlerde “DC olmayan sonraki mum” mantığı ile kaydırma yapılır; veri yoksa `missing_steps` raporlanır ve tahmini zaman (`pred`) üretilir.
 - Matrix görünümlerinde tüm offset sütunları tek tabloda listelenir.
 
+Pozitif vs Negatif Offsetlerde DC Kaydırma:
+- Pozitif (+1/+2/+3): Başlangıç noktası seçilirken DC mumlar atlanır ve ilk “DC olmayan gerçek” muma kaydırılır. Böylece +offset sütunları DC’ye kilitlenmez ve çakışmalar azalır (ör. 20:00 DC ise +1 başlangıcı 22:00; 22:00 da DC ise 00:00).
+- Negatif (-1/-2/-3): Hedef zaman doğrudan kullanılır (ör. -1 → 16:00). Hedef mum DC olsa bile geri doğru “bir sonraki DC olmayan mumu bul” araması yapılmaz; 16:00 DC ise başlangıç yine 16:00 kabul edilir.
+- Kapsam notu: “Kapsayıcı kural” her iki yönde de geçerlidir; dizi adımı DC’ye denk gelirse o DC’nin timestamp’i yazılır. 0 offset zaten 18:00’dır ve uygulama kuralları gereği DC sayılmadığından ek işleme gerek yoktur.
+
 Hafta Sonu Kapanış/Açılış (tahmin):
 - app72, app80, app120: Cuma kapanışından sonra tahminler Pazar 18:00’a atlar.
 - app48, app90, app96, app321: Doğrusal adımla dakika eklenir (özel hafta sonu sıçraması yok).
@@ -213,4 +218,3 @@ Her uygulama tipik olarak şu modüllere sahiptir: `counter.py` (sayım + sinyal
 
 
 — Son —
-
