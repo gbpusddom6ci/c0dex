@@ -100,6 +100,9 @@ Hafta Sonu Kapanış/Açılış (tahmin):
 - app72 özel slot koruması (XYZ): Haber listesi boşsa 16:48, 18:00, 19:12, 20:24 slotları “Kural slot HH:MM” notuyla korunur; tatil/all-day gibi bilgi satırları geldiğinde bu koruma devreden çıkar.
 - Eşik entegrasyonu: XYZ hesabında da `|OC|` ve `|PrevOC| ≥ (limit + tolerans)` koşulu aranır.
 
+Özet tablo (yalnız XYZ kümesi):
+- IOU formlarındaki “Özet tablo” seçeneği açıkken ayrıntılı hit tabloları yerine dosya başına yalnız XYZ kümesi ve elenen offsetlerin nedenleri özet bir tabloda gösterilir. Örüntüleme açıksa, bu modda da örüntü paneli eklenmeye devam eder.
+
 Not (spesifikasyon ↔ web farkı): Web IOU sayfalarında XYZ elemesi şu an “OR” ve “>” ile çalışır (haber yoksa ve `|OC| > eşiği` veya `|PrevOC| > eşiği` ise offset elenir). Teorik çekirdek kural “AND” ve “≥”dir. Bu fark bilinçli şekilde belgelenmiştir.
 
 ### 3.9 Örüntüleme (Pattern) ve Joker
