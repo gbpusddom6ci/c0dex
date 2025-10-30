@@ -154,8 +154,11 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
   python3 -m app120.counter --csv data.csv --predict 37
   python3 -m app120 --csv 60m.csv --input-tz UTC-5 --output 120m.csv
   ```
-- **IOV/IOU Limit Mantığı:** Limit mutlak değerdir (0.1 → `|OC| ≥ 0.1`). Limit negatif girilirse `abs(limit)` alınır. Limit=0 durumunda sadece sıfır olmayan değerler eşik üstü kabul edilir.
+- **IOV/IOU Limit Mantığı:** Limit mutlak değerdir (0.1 → `|OC| ≥ 0.1`). Limit negatif girilirse `abs(limit)` alınır. IOU'da etkin eşik `limit + tolerans` olarak uygulanır ve karşılaştırma `≥` sınırıyla yapılır (kodda `abs(x) < limit+tolerans` elenir). IOV'da tolerans 0 kabul edilir. Bu nedenle Limit=0 için:
+  - IOU: yalnızca `|OC|` ve `|PrevOC|` değerleri `tolerans` üstü olan çiftler kabul edilir (varsayılan tolerans 0.005).
+  - IOV: yalnızca sıfırdan farklı ve zıt işaretli çiftler kabul edilebilir (limit=0 iken eşik 0’dır; işaret koşulu sıfırları zaten dışarıda bırakır).
 - **IOU Özel Kuralı (app120):** 20:00 (UTC-4) mumları IOU olamaz (Pazar dahil).
+- **Sinyal Dışlama Saatleri:** IOU hesaplamasında 18:00 ve Cuma 16:00 mumları da dışlanır (DC istisnasına ek olarak sinyal olarak da raporlanmaz). 20:00 tüm günlerde IOU değildir; diğer saat kısıtları DC tarafında uygulanır.
 - **Çoklu Dosya Akışı:** Formdaki tüm CSV’ler aynı sequence/limit/TZ ile işlenir; her dosya için veri kapsamı, offset özetleri ve tablolar ayrı kartlarda sunulur.
 
 ### 4.2 app80 – 80 Dakikalık Analiz
