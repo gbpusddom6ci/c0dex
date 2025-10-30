@@ -73,7 +73,7 @@ Bir mum DC sayılırsa: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` değer
 - app80: (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:40 (hafta kapanışı, ilk hafta dahil) DC olamaz.
 - app90: 18:00; (Pazar hariç) 19:30; Cuma 16:30 DC olamaz.
 - app96: 18:00; (Pazar hariç) 19:36; Cuma 16:24 DC olamaz.
-- app120: 18:00 DC değildir; Cuma 16:00 hafta kapanışı DC sayılmaz.
+- app120: (Pazar hariç) 20:00 DC olamaz; 18:00 DC değildir; Cuma 16:00 hafta kapanışı DC sayılmaz.
 
 **Kapsayıcı Kural:** Bir sequence adımı DC’ye denk gelirse zaman damgası o DC mumuna yazılır.
 **Pozitif Offset İstisnası:** Offset +1, +2 ve +3 için başlangıç mumu DC ise ilgili offset özelinde normal mum gibi sayılır (DC kuralı uygulanmaz).
@@ -130,6 +130,7 @@ IOU algılama akışı tüm timeframe uygulamalarında aynıdır:
    - `prev_oc = prev.close - prev.open`
    - Eğer `abs(oc) ≥ limit + tolerans` **ve** `abs(prev_oc) ≥ limit + tolerans` ve işaretler aynı ise hit kaydedilir.
    - Limit veya tolerans koşulu sağlanmazsa satır tamamen elenir; yalnızca limit dışı olanlar değil, tolerans bandında kalanlar da dahil edilmez.
+   - Dizi atlama kuralı: S1 için `1` ve `3`, S2 için `1` ve `5` sinyal dışıdır; bu adımlar IOU/IOV taramalarında atlanır.
 5. **Sonuç üretimi:** Hit’ler offset bazında gruplanır; DC kapsaması `(rule)` etiketiyle, sentetik/gerçek ayrımı `syn/real` etiketiyle, haberler ise `find_news_for_timestamp` çıktısıyla zenginleştirilir.
 
 Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark yalnızca çıktı formatıdır (CLI → CSV/terminal, web → HTML tablo).
@@ -267,7 +268,7 @@ Bu mekanizma hem CLI (counter/main) hem de web katmanlarında aynıdır; fark ya
 ### 5.5 IOU Haber Akışı & XYZ Filtresi (2025-09)
 - **Checkbox:** app48/app72/app80/app120/app321 IOU formlarında “XYZ kümesi (haber filtreli)” seçeneği bulunur. İşaretlendiğinde haber taşımayan offsetler elenir ve kalanlar kart üst bilgisinde `XYZ Kümesi` satırıyla listelenir.
 - **Haber kaynağı (`news_loader.py`):** JSON takvim dosyalarında `time_24h` yoksa `time`, `time_text`, `time_label`, `session` alanlarını dener. `"All Day"` / `all_day=true` kayıtları gün bazında yakalar, `recent-null` penceresi null actual taşıyan önceki olayları dahil eder.
-- **Hücre formatı:** Haber sütunu `Var`, `Holiday` veya `Yok` ile başlar. Tatil satırları sadece bilgi amaçlıdır; grafiksel olarak listelenir fakat haber sayılmadıkları için ilgili offsetleri XYZ kümesinden çıkarır.
+- **Hücre formatı:** Haber sütunu `Var`, `Holiday`, `AllDay` veya `Yok` ile başlar. Tatil satırları sadece bilgi amaçlıdır; grafiksel olarak listelenir fakat haber sayılmadıkları için ilgili offsetleri XYZ kümesinden çıkarır.
 - **Tatiller:** Başlıkta “holiday” geçen olaylar `effective_news=False` sayılır. Tatil veya yalnız bilgi içeren satırlar, haber kriterini karşılamadığından ilgili offseti XYZ kümesinin dışında bırakır; satır `Holiday<br>All Day Bank Holiday (holiday)` gibi görünür.
 - **All-day haberler:** Zaman etiketi “All Day – Başlık” formatıyla yazılır. Tatil dışı all-day olayları offset’i korur.
 - **17:xx slot kuralı (app72):** `SPECIAL_SLOT_TIMES = {16:48, 18:00, 19:12, 20:24}`. Haber listesi boşsa bu saatler “Kural slot HH:MM” notuyla korunur ve XYZ’de kalır. Ancak tatil/all-day gibi bilgi kayıtları geldiğinde haber sayılmaz; bu slotlar da diğer offsetler gibi elenir.
