@@ -10,6 +10,7 @@ DEFAULT_START_TOD = dtime(hour=18, minute=0)
 IOU_TOLERANCE = 0.005
 FORBIDDEN_TIMES_ALWAYS = {
     dtime(hour=18, minute=0),
+    dtime(hour=16, minute=0),
 }
 FORBIDDEN_TIMES_NON_SUNDAY = {
     dtime(hour=20, minute=0),

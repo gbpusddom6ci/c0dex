@@ -108,7 +108,7 @@ Bir mum DC olarak işaretlenir eğer:
 6. **Cuma 16:40 mumu değilse**
 7. Önceki mum DC değilse
 
-**Önemli:** 18:00 mumları hiçbir zaman DC olmaz. 19:20 ve 20:40 mumları yalnızca iki haftalık veri setindeki Pazar günlerinde serbesttir; diğer günlerde DC olarak işaretlenmez. Cuma 16:40 mumları da DC/IOU dışında tutulur.
+**Önemli:** 18:00 mumları hiçbir zaman DC olmaz. 19:20 ve 20:40 mumları yalnızca iki haftalık veri setindeki Pazar günlerinde serbesttir; diğer günlerde DC olarak işaretlenmez. Cuma 16:40 mumları DC/IOU dışında tutulur; IOU özelinde **15:20** ve **16:40** mumları her gün ayrıca elenir.
 
 DC mumlar sayımda atlanır.
 
@@ -118,7 +118,7 @@ DC mumlar sayımda atlanır.
 - Hafta kapanışı: **Cuma 16:40**
 - Haftasonu mumları otomatik filtrelenir
 - Timezone: Girdi UTC-5 ise otomatik +1 saat eklenir → UTC-4
-- IOU taraması: 18:00 mumları raporlanmaz; 19:20 ve 20:40 mumları yalnızca Pazar günlerinde IOU verebilir; Cuma 16:40 mumları IOU’dan da hariç tutulur.
+- IOU taraması: 15:20, 16:40 ve 18:00 mumları raporlanmaz; 19:20 ve 20:40 mumları yalnızca Pazar günlerinde IOU verebilir.
 
 ## Örnekler
 

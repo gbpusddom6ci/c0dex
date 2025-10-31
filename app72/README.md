@@ -122,7 +122,7 @@ DC mumlar sayımda atlanır.
 - Hafta kapanışı: **Cuma 16:00**
 - Haftasonu mumları otomatik filtrelenir
 - Timezone: Girdi UTC-5 ise otomatik +1 saat eklenir → UTC-4
-- IOU taraması: 2 haftalık veri varsayımıyla ikinci Pazar hariç **18:00**, **19:12** ve **20:24** mumları IOU sayılmaz; ayrıca ilk haftanın **Cuma 16:48** mumu IOU sonuçlarından hariç tutulur. Bu mumlar XYZ filtresinde ayrıca elenmez.
+- IOU taraması: **15:36** ve **16:48** mumları her gün IOU sonucundan çıkarılır. 2 haftalık veri varsayımında ikinci Pazar hariç **18:00**, **19:12** ve **20:24** mumları IOU sayılmaz; ayrıca ilk haftanın **Cuma 16:48** mumu IOU sonuçlarından hariç tutulur. Bu mumlar XYZ filtresinde ayrıca elenmez.
 
 ## Örnekler
 
