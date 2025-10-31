@@ -670,6 +670,9 @@ def detect_iou_candles(
             continue
         filtered_hits: List[SignalHit] = []
         for hit in offset.hits:
+            # IOU: Pazar günü hiçbir mum IOU olamaz
+            if hit.ts.weekday() == 6:
+                continue
             tod = hit.ts.time()
             # IOU: 16:00 her gün dışlanır
             if tod == dtime(hour=16, minute=0):
