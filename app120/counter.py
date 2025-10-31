@@ -9,8 +9,8 @@ MINUTES_PER_STEP = 120
 DEFAULT_START_TOD = dtime(hour=18, minute=0)
 IOU_TOLERANCE = 0.005
 FORBIDDEN_TIMES_ALWAYS = {
+    # DC için: 18:00 her gün DC değildir (her zaman dışlanır)
     dtime(hour=18, minute=0),
-    dtime(hour=16, minute=0),
 }
 FORBIDDEN_TIMES_NON_SUNDAY = {
     dtime(hour=20, minute=0),
@@ -670,10 +670,14 @@ def detect_iou_candles(
             continue
         filtered_hits: List[SignalHit] = []
         for hit in offset.hits:
+            tod = hit.ts.time()
+            # IOU: 16:00 her gün dışlanır
+            if tod == dtime(hour=16, minute=0):
+                continue
             if should_exclude_for_signals(hit.ts, sunday_dates):
                 continue
             # IOU-specific: 20:00 candles are never eligible (including Sundays)
-            if hit.ts.time() == dtime(hour=20, minute=0):
+            if tod == dtime(hour=20, minute=0):
                 continue
             filtered_hits.append(hit)
         offset.hits = filtered_hits

@@ -528,7 +528,7 @@ def render_analyze_index() -> bytes:
       </form>
     </div>
     <p>CSV başlıkları: <code>Time, Open, High, Low, Close (Last)</code> (eş anlamlılar desteklenir).</p>
-    <p><strong>Not:</strong> 18:00 mumları hiçbir zaman DC/IOU olmaz; 20:00 mumları yalnızca veri setindeki Pazar günlerinde serbesttir. Cuma 16:00 mumları da DC/IOU kapsamı dışındadır.</p>
+    <p><strong>Not:</strong> DC istisnaları: 18:00 DC değildir; 20:00 (Pazar hariç) DC olamaz; Cuma 16:00 DC sayılmaz. IOU kısıtları: 16:00 ve 18:00 IOU değildir; 20:00 tüm günlerde IOU değildir.</p>
     """
     return page("app120", body, active_tab="analyze")
 
@@ -560,7 +560,7 @@ def render_dc_index() -> bytes:
       </form>
     </div>
     <p>Not: app120 sayımında DC'ler her zaman atlanır; bu sayfada tüm DC'ler listelenir.</p>
-    <p><strong>Önemli:</strong> 18:00 mumları her zaman dışlanır; 20:00 mumları yalnızca Pazar günlerinde izinlidir. Cuma 16:00 mumları da DC/IOU dışında tutulur.</p>
+    <p><strong>Önemli:</strong> DC: 18:00 her zaman dışlanır; 20:00 yalnız Pazar hariç DC olabilir; Cuma 16:00 DC sayılmaz. IOU: 16:00 ve 18:00 her gün yok; 20:00 tüm günlerde IOU değildir.</p>
     """
     return page("app120 - DC List", body, active_tab="dc")
 
@@ -701,7 +701,7 @@ def render_iou_form() -> str:
       </form>
     </div>
     <p>IOU mumlar, limit üzerindeki OC ve PrevOC değerlerinin aynı işareti paylaştığı durumlarda raporlanır. Aynı anda birden fazla CSV seçebilirsin.</p>
-    <p><strong>Not:</strong> 18:00 mumları IOU üretmez; 20:00 mumları IOU olamaz. Cuma 16:00 mumları IOU sonuçlarından hariç tutulur.</p>
+    <p><strong>Not:</strong> 16:00 ve 18:00 mumları IOU üretmez; 20:00 mumları tüm günlerde IOU olamaz.</p>
     """
 
 
