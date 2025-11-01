@@ -3,6 +3,7 @@ import csv
 import html
 import io
 import base64
+import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import List, Optional, Dict, Any, Type, Tuple, Set
 from zipfile import ZipFile, ZIP_DEFLATED
@@ -41,6 +42,51 @@ from news_loader import find_news_for_timestamp
 IOU_TOLERANCE = 0.005
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_FILES = 50
+PATTERN_META_FIELD = "previous_pattern_meta"
+
+
+def _decode_pattern_meta(encoded: Optional[str]) -> Dict[str, Any]:
+    if not encoded:
+        return {"groups": []}
+    try:
+        raw = base64.b64decode(encoded.encode("ascii")).decode("utf-8")
+        data = json.loads(raw)
+    except Exception:
+        return {"groups": []}
+    groups = data.get("groups")
+    if not isinstance(groups, list):
+        return {"groups": []}
+    sanitized: List[Dict[str, Any]] = []
+    for entry in groups:
+        if not isinstance(entry, dict):
+            continue
+        seq = entry.get("sequence")
+        xyz_sets = entry.get("xyz_sets")
+        file_names = entry.get("file_names")
+        joker_indices = entry.get("joker_indices", [])
+        label = entry.get("analysis_label")
+        if not isinstance(seq, str) or not isinstance(xyz_sets, list) or not isinstance(file_names, list):
+            continue
+        try:
+            xyz_sets_norm = [list(map(int, xs)) for xs in xyz_sets]
+        except Exception:
+            continue
+        sanitized.append({
+            "sequence": seq,
+            "xyz_sets": xyz_sets_norm,
+            "file_names": [str(name) for name in file_names],
+            "joker_indices": [int(x) for x in joker_indices] if isinstance(joker_indices, list) else [],
+            "analysis_label": str(label) if label else None,
+        })
+    return {"groups": sanitized}
+
+
+def _encode_pattern_meta(meta: Dict[str, Any]) -> str:
+    try:
+        payload = json.dumps(meta, ensure_ascii=False)
+    except Exception:
+        payload = json.dumps({"groups": []})
+    return base64.b64encode(payload.encode("utf-8")).decode("ascii")
 
 def _add_security_headers(handler: BaseHTTPRequestHandler) -> None:
     handler.send_header("X-Content-Type-Options", "nosniff")
@@ -567,10 +613,15 @@ def render_pattern_panel(
     file_names: Optional[List[str]] = None,
     joker_indices: Optional[Set[int]] = None,
     sequence_name: Optional[str] = None,
+    title: str = "Örüntüleme",
+    intro_html: Optional[str] = None,
 ) -> str:
     patterns = build_patterns_from_xyz_lists(xyz_sets, allow_zero_after_start=allow_zero_after_start)
     if not patterns:
-        return "<div class='card'><h3>Örüntüleme</h3><div>Örüntü bulunamadı.</div></div>"
+        header = f"<div class='card'><h3>{html.escape(title)}</h3>"
+        if intro_html:
+            header += intro_html
+        return header + "<div>Örüntü bulunamadı.</div></div>"
     def _build_state_for_seq(seq: List[int]) -> Dict[str, Any]:
         st: Dict[str, Any] = {
             "mode": "free",
@@ -686,7 +737,66 @@ def render_pattern_panel(
     ) + "</div>"
     info = f"<div><strong>Toplam örüntü:</strong> {len(patterns)} (ilk {min(len(patterns), PATTERN_MAX_PATHS)})</div>"
     seq_info = f"<div><strong>Sequence:</strong> {html.escape(sequence_name)}</div>" if sequence_name else ""
-    return "<div class='card'><h3>Örüntüleme</h3>" + info + seq_info + last_line + "".join(lines) + "</div>"
+    header = f"<div class='card'><h3>{html.escape(title)}</h3>"
+    if intro_html:
+        header += intro_html
+    return header + info + seq_info + last_line + "".join(lines) + "</div>"
+
+
+def render_combined_pattern_panels(pattern_meta: Dict[str, Any]) -> str:
+    groups = pattern_meta.get("groups") if isinstance(pattern_meta, dict) else None
+    if not groups:
+        return ""
+    sequence_order: List[str] = []
+    for entry in groups:
+        seq_name = entry.get("sequence")
+        if isinstance(seq_name, str) and seq_name not in sequence_order:
+            sequence_order.append(seq_name)
+    outputs: List[str] = []
+    for seq_name in sequence_order:
+        seq_groups = [g for g in groups if g.get("sequence") == seq_name]
+        if len(seq_groups) < 2:
+            continue
+        combined_xyz_sets: List[Set[int]] = []
+        combined_file_names: List[str] = []
+        combined_jokers: Set[int] = set()
+        labels: List[str] = []
+        offset = 0
+        for idx_grp, grp in enumerate(seq_groups, start=1):
+            raw_sets = grp.get("xyz_sets") or []
+            try:
+                set_list = [set(map(int, xs)) for xs in raw_sets]
+            except Exception:
+                set_list = []
+            combined_xyz_sets.extend(set_list)
+            names = grp.get("file_names") or []
+            combined_file_names.extend([str(nm) for nm in names])
+            jokers = grp.get("joker_indices") or []
+            for j in jokers:
+                try:
+                    combined_jokers.add(int(j) + offset)
+                except Exception:
+                    continue
+            offset += len(names) if names else len(set_list)
+            label = grp.get("analysis_label") or f"Grup {idx_grp}"
+            labels.append(str(label))
+        if not combined_xyz_sets:
+            continue
+        intro = "<div><strong>Analiz akışı:</strong> " + " → ".join(html.escape(lbl) for lbl in labels) + "</div>"
+        outputs.append(
+            render_pattern_panel(
+                combined_xyz_sets,
+                allow_zero_after_start=True,
+                file_names=combined_file_names,
+                joker_indices=combined_jokers,
+                sequence_name=f"{seq_name} (Toplu)",
+                title="Toplu Örüntüleme",
+                intro_html=intro,
+            )
+        )
+    if not outputs:
+        return ""
+    return "<div style='margin:24px 0;'>" + "".join(outputs) + "</div>"
 
 
 def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]]:
@@ -891,6 +1001,9 @@ class App72Handler(BaseHTTPRequestHandler):
                     except Exception:
                         previous_results_html = ""
                 
+                pattern_meta_raw = form.get(PATTERN_META_FIELD, {}).get("value", "")
+                pattern_meta = _decode_pattern_meta(pattern_meta_raw)
+                
                 try:
                     limit_val = float(limit_raw)
                 except Exception:
@@ -952,6 +1065,7 @@ class App72Handler(BaseHTTPRequestHandler):
                         _hidden_bool("xyz_summary", summary_mode),
                         _hidden_bool("pattern_mode", pattern_enabled),
                         "<input type='hidden' name='confirm_iou' value='1'>",
+                        f"<input type='hidden' name='{PATTERN_META_FIELD}' value='{html.escape(pattern_meta_raw)}'>",
                     ]
                     
                     # Önceki sonuçları da koru (eğer varsa)
@@ -1220,12 +1334,25 @@ class App72Handler(BaseHTTPRequestHandler):
                 # Yeni analiz sonucunu bir bölüm içine al
                 from datetime import datetime
                 result_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+                analysis_label = f"Analiz #{result_id}"
                 result_section = (
                     f"<div id='result_{result_id}' style='margin-bottom:32px; padding-bottom:24px; border-bottom:2px solid #ddd;'>"
-                    f"<h3 style='color:#0366d6; margin-bottom:16px;'>Analiz #{result_id}</h3>"
+                    f"<h3 style='color:#0366d6; margin-bottom:16px;'>{analysis_label}</h3>"
                     f"{current_result}"
                     f"</div>"
                 )
+                if pattern_enabled:
+                    groups_list = pattern_meta.get("groups")
+                    if not isinstance(groups_list, list):
+                        groups_list = []
+                        pattern_meta["groups"] = groups_list
+                    groups_list.append({
+                        "sequence": sequence,
+                        "xyz_sets": [sorted(list(s)) for s in all_xyz_sets],
+                        "file_names": list(all_file_names),
+                        "joker_indices": sorted(list(joker_indices)),
+                        "analysis_label": analysis_label,
+                    })
                 
                 # Önceki sonuçları ve yeni sonucu birleştir (ilk analiz üstte kalsın)
                 if previous_results_html:
@@ -1233,9 +1360,12 @@ class App72Handler(BaseHTTPRequestHandler):
                 else:
                     body_without_form = result_section
                 
+                combined_panel_html = render_combined_pattern_panels(pattern_meta)
+                
                 # Sonuçların altına tekrar IOU formunu ekle (önceki sonuçları da hidden field olarak taşı)
                 # Önce body_without_form'u encode edip sakla (form eklenmeden önceki hali)
                 body_encoded = base64.b64encode(body_without_form.encode("utf-8")).decode("ascii")
+                pattern_meta_encoded = _encode_pattern_meta(pattern_meta)
                 
                 form_html = render_iou_form()
                 # Form içindeki form tag'ini kaldırıp sadece içeriği al
@@ -1247,13 +1377,14 @@ class App72Handler(BaseHTTPRequestHandler):
                     "<div class='card'>"
                     "<form method='post' action='/iou' enctype='multipart/form-data'>"
                     f"<input type='hidden' name='previous_results_html' value='{body_encoded}'>"
+                    f"<input type='hidden' name='{PATTERN_META_FIELD}' value='{html.escape(pattern_meta_encoded)}'>"
                     + form_content +
                     "</form>"
                     "</div>"
                 )
                 
                 # Final body: önceki sonuçlar + yeni sonuç + form
-                body = body_without_form + form_section
+                body = body_without_form + combined_panel_html + form_section
                 
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
