@@ -743,90 +743,73 @@ def render_pattern_panel(
     return header + info + seq_info + last_line + "".join(lines) + "</div>"
 
 
-def _render_combined_panel_for_sequence(
-    sequence_name: str,
-    seq_groups: List[Dict[str, Any]],
+def render_combined_panel(
+    groups: List[Dict[str, Any]],
     title: str = "Toplu Örüntüleme",
     allow_zero_after_start: bool = True,
 ) -> str:
-    if not seq_groups:
+    if not groups or len(groups) < 2:
         return ""
-    if len(seq_groups) < 2:
-        return ""
+
     combined_xyz_sets: List[Set[int]] = []
     combined_file_names: List[str] = []
     combined_jokers: Set[int] = set()
     labels: List[str] = []
+    seq_chain: List[str] = []
     offset = 0
-    for idx_grp, grp in enumerate(seq_groups, start=1):
+
+    for idx_grp, grp in enumerate(groups, start=1):
         raw_sets = grp.get("xyz_sets") or []
         try:
             set_list = [set(map(int, xs)) for xs in raw_sets]
         except Exception:
             set_list = []
         combined_xyz_sets.extend(set_list)
+
         names = grp.get("file_names") or []
         combined_file_names.extend([str(nm) for nm in names])
+
         jokers = grp.get("joker_indices") or []
         for j in jokers:
             try:
                 combined_jokers.add(int(j) + offset)
             except Exception:
                 continue
-        offset += len(names) if names else len(set_list)
+        count_for_offset = len(names) if names else len(set_list)
+        offset += count_for_offset
+
         label = grp.get("analysis_label") or f"Grup {idx_grp}"
+        seq = grp.get("sequence")
+        seq_chain.append(str(seq) if seq else "?")
+        if seq:
+            label = f"{label} ({seq})"
         labels.append(str(label))
+
     if not combined_xyz_sets:
         return ""
+
     intro = "<div><strong>Analiz akışı:</strong> " + " → ".join(html.escape(lbl) for lbl in labels) + "</div>"
+    sequence_summary = " → ".join(seq_chain) if seq_chain else None
+
     return render_pattern_panel(
         combined_xyz_sets,
         allow_zero_after_start=allow_zero_after_start,
         file_names=combined_file_names,
         joker_indices=combined_jokers,
-        sequence_name=f"{sequence_name} (Toplu)",
+        sequence_name=sequence_summary,
         title=title,
         intro_html=intro,
     )
 
 
-def render_combined_panel_for_sequence(
-    pattern_meta: Dict[str, Any],
-    sequence_name: str,
-    title: str = "Toplu Örüntüleme",
-) -> str:
-    if not isinstance(pattern_meta, dict):
-        return ""
-    seq_groups = [g for g in pattern_meta.get("groups", []) if g.get("sequence") == sequence_name]
-    return _render_combined_panel_for_sequence(sequence_name, seq_groups, title=title)
-
-
 def render_combined_pattern_panels(pattern_meta: Dict[str, Any]) -> str:
     groups = pattern_meta.get("groups") if isinstance(pattern_meta, dict) else None
-    if not groups:
+    if not groups or len(groups) < 2:
         return ""
-    sequence_order: List[str] = []
-    for entry in groups:
-        seq_name = entry.get("sequence")
-        if isinstance(seq_name, str) and seq_name not in sequence_order:
-            sequence_order.append(seq_name)
-    outputs: List[str] = []
-    for seq_name in sequence_order:
-        seq_groups = [g for g in groups if g.get("sequence") == seq_name]
-        panel = _render_combined_panel_for_sequence(seq_name, seq_groups, title="Toplu Örüntüleme")
-        if panel:
-            outputs.append(panel)
-    if not outputs:
-        has_groups = any(seq_groups for seq_groups in ([g for g in groups if g.get("sequence") == name] for name in sequence_order))
-        if has_groups:
-            hint = (
-                "<div class='card'><h3>Toplu Örüntüleme</h3>"
-                "<div>Toplu örüntü için aynı sequence ile en az iki analiz kaydı gerekir.</div>"
-                "</div>"
-            )
-            return "<div style='margin:24px 0;'>" + hint + "</div>"
+    panel = render_combined_panel(groups, title="Toplu Örüntüleme")
+    if not panel:
         return ""
-    return "<div style='margin:24px 0;'>" + "".join(outputs) + "</div>"
+    return "<div style='margin:24px 0;'>" + panel + "</div>"
 
 
 def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]]:
@@ -1365,7 +1348,6 @@ class App72Handler(BaseHTTPRequestHandler):
                         )
                     current_result = "\n".join(sections)
                 
-                combined_panel_current = ""
                 if pattern_enabled:
                     groups_list = pattern_meta.get("groups")
                     if not isinstance(groups_list, list):
@@ -1378,13 +1360,6 @@ class App72Handler(BaseHTTPRequestHandler):
                         "joker_indices": sorted(list(joker_indices)),
                         "analysis_label": analysis_label,
                     })
-                    combined_panel_current = render_combined_panel_for_sequence(
-                        pattern_meta,
-                        sequence,
-                        title=f"Toplu Örüntüleme - {sequence}",
-                    )
-                    if combined_panel_current:
-                        current_result += combined_panel_current
                 
                 # Yeni analiz sonucunu bir bölüm içine al
                 result_section = (
