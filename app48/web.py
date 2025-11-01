@@ -210,6 +210,7 @@ def render_pattern_panel(
     allow_zero_after_start: bool,
     file_names: Optional[List[str]] = None,
     joker_indices: Optional[Set[int]] = None,
+    sequence_name: Optional[str] = None,
 ) -> str:
     patterns = build_patterns_from_xyz_lists(xyz_sets, allow_zero_after_start=allow_zero_after_start)
     if not patterns:
@@ -328,7 +329,8 @@ def render_pattern_panel(
         ", ".join(_fmt_off(v) for v in unique_last_sorted) if unique_last_sorted else "-"
     ) + "</div>"
     info = f"<div><strong>Toplam örüntü:</strong> {len(patterns)} (ilk {min(len(patterns), PATTERN_MAX_PATHS)})</div>"
-    return "<div class='card'><h3>Örüntüleme</h3>" + info + last_line + "".join(lines) + "</div>"
+    seq_info = f"<div><strong>Sequence:</strong> {html.escape(sequence_name)}</div>" if sequence_name else ""
+    return "<div class='card'><h3>Örüntüleme</h3>" + info + seq_info + last_line + "".join(lines) + "</div>"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_FILES = 50
 
@@ -1194,12 +1196,26 @@ class AppHandler(BaseHTTPRequestHandler):
                             "</tr>"
                         )
                     table = "<table><thead>" + header + "</thead><tbody>" + "".join(rows_summary) + "</tbody></table>"
-                    pattern_html = render_pattern_panel(all_xyz_sets, allow_zero_after_start=True, file_names=all_file_names, joker_indices=joker_indices) if pattern_enabled else ""
+                    pattern_html = render_pattern_panel(
+                        all_xyz_sets,
+                        allow_zero_after_start=True,
+                        file_names=all_file_names,
+                        joker_indices=joker_indices,
+                        sequence_name=sequence,
+                    ) if pattern_enabled else ""
                     current_result = "<div class='card'>" + table + "</div>" + pattern_html
                 else:
                     # Non-summary: tüm dosya kartları + varsa örüntü paneli
                     if pattern_enabled:
-                        sections.append(render_pattern_panel(all_xyz_sets, allow_zero_after_start=True, file_names=all_file_names, joker_indices=joker_indices))
+                        sections.append(
+                            render_pattern_panel(
+                                all_xyz_sets,
+                                allow_zero_after_start=True,
+                                file_names=all_file_names,
+                                joker_indices=joker_indices,
+                                sequence_name=sequence,
+                            )
+                        )
                     current_result = "\n".join(sections)
                 
                 # Yeni analiz sonucunu bir bölüm içine al
