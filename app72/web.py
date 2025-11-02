@@ -3,6 +3,7 @@ import csv
 import html
 import io
 import base64
+import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import List, Optional, Dict, Any, Type, Tuple, Set
 from zipfile import ZipFile, ZIP_DEFLATED
@@ -561,14 +562,139 @@ def build_patterns_from_xyz_lists(xyz_sets: List[Set[int]], allow_zero_after_sta
     return results[:max_paths]
 
 
+PATTERN_DOMAIN = {-3, -2, -1, 0, 1, 2, 3}
+
+
+def _initial_pattern_state() -> Dict[str, Any]:
+    return {
+        "mode": "free",
+        "sign": None,
+        "dir": None,
+        "pos": None,
+        "allow_zero_next": False,
+        "prev": None,
+        "seq": [],
+    }
+
+
+def _apply_pattern_sequence(
+    state: Dict[str, Any],
+    pattern: List[int],
+    start_len: int,
+    allow_zero_after_start: bool,
+) -> Optional[Dict[str, Any]]:
+    st = state
+    step_idx = start_len
+    for value in pattern:
+        allowed = _allowed_values_for_state(st, PATTERN_DOMAIN, allow_zero_after_start)
+        if value not in allowed:
+            return None
+        st = _advance_state(st, value, step_idx, allow_zero_after_start)
+        step_idx += 1
+    return st
+
+
+def _continuation_options_for_sequence(seq: List[int], allow_zero_after_start: bool) -> List[int]:
+    state = _initial_pattern_state()
+    for idx, value in enumerate(seq):
+        allowed = _allowed_values_for_state(state, PATTERN_DOMAIN, allow_zero_after_start)
+        if value not in allowed:
+            return []
+        state = _advance_state(state, value, idx, allow_zero_after_start)
+    return _allowed_values_for_state(state, PATTERN_DOMAIN, allow_zero_after_start)
+
+
+def build_chained_pattern_sequences(
+    pattern_groups: List[List[List[int]]],
+    allow_zero_after_start: bool,
+    max_paths: int = PATTERN_MAX_PATHS,
+    beam_width: int = PATTERN_BEAM_WIDTH,
+) -> Tuple[List[List[int]], int]:
+    if not pattern_groups:
+        return [], 0
+    states: List[Dict[str, Any]] = [_initial_pattern_state()]
+    for group in pattern_groups:
+        next_states: List[Dict[str, Any]] = []
+        for st in states:
+            current_len = len(st.get("seq") or [])
+            for pattern in group:
+                new_state = _apply_pattern_sequence(st, pattern, current_len, allow_zero_after_start)
+                if new_state is None:
+                    continue
+                next_states.append(new_state)
+                if len(next_states) >= beam_width:
+                    break
+            if len(next_states) >= beam_width:
+                break
+        states = next_states
+        if not states:
+            break
+    seen: Set[Tuple[int, ...]] = set()
+    display: List[List[int]] = []
+    total_unique = 0
+    for st in states:
+        seq = st.get("seq") or []
+        key = tuple(seq)
+        if key in seen:
+            continue
+        seen.add(key)
+        total_unique += 1
+        if len(display) < max_paths:
+            display.append(seq)
+    return display, total_unique
+
+
+def render_combined_pattern_panel(
+    pattern_groups: List[List[List[int]]],
+    allow_zero_after_start: bool,
+) -> str:
+    group_count = len(pattern_groups)
+    if group_count < 2:
+        return ""
+    combined, total_unique = build_chained_pattern_sequences(
+        pattern_groups,
+        allow_zero_after_start=allow_zero_after_start,
+    )
+    summary_label = f"Toplu örüntüler (grup sayısı {group_count})"
+    if total_unique == 0:
+        inner = "<div style='margin-top:12px;'>Uygun birleşik örüntü bulunamadı.</div>"
+    else:
+        limit_note = ""
+        if total_unique > len(combined):
+            limit_note = f" (ilk {len(combined)})"
+        info_line = f"<div><strong>Toplam birleşik örüntü:</strong> {total_unique}{limit_note}</div>"
+        lines: List[str] = []
+        for idx, seq in enumerate(combined):
+            token_parts = [f"<span class='pat-token'>{html.escape(_fmt_off(v))}</span>" for v in seq]
+            label = ", ".join(token_parts)
+            cont_vals = _continuation_options_for_sequence(seq, allow_zero_after_start)
+            cont_text = ", ".join(_fmt_off(v) for v in cont_vals) if cont_vals else "-"
+            number_html = f"<span style='display:inline-block; min-width:1.8em; font-weight:bold;'>{idx + 1}.</span>"
+            lines.append(
+                f"<div class='pat-line'>{number_html} {label} (devam: {html.escape(cont_text)})</div>"
+            )
+        inner = "<div style='margin-top:12px;'>" + info_line + "".join(lines) + "</div>"
+    return (
+        f"<details class='card' style='margin-top:16px;'>"
+        f"<summary>{html.escape(summary_label)}</summary>"
+        f"{inner}"
+        "</details>"
+    )
+
+
 def render_pattern_panel(
     xyz_sets: List[Set[int]],
     allow_zero_after_start: bool,
     file_names: Optional[List[str]] = None,
     joker_indices: Optional[Set[int]] = None,
     sequence_name: Optional[str] = None,
+    precomputed_patterns: Optional[List[List[int]]] = None,
 ) -> str:
-    patterns = build_patterns_from_xyz_lists(xyz_sets, allow_zero_after_start=allow_zero_after_start)
+    patterns = (
+        precomputed_patterns
+        if precomputed_patterns is not None
+        else build_patterns_from_xyz_lists(xyz_sets, allow_zero_after_start=allow_zero_after_start)
+    )
     if not patterns:
         return "<div class='card'><h3>Örüntüleme</h3><div>Örüntü bulunamadı.</div></div>"
     def _build_state_for_seq(seq: List[int]) -> Dict[str, Any]:
@@ -891,6 +1017,35 @@ class App72Handler(BaseHTTPRequestHandler):
                         previous_results_html = base64.b64decode(previous_results_html.encode("ascii")).decode("utf-8")
                     except Exception:
                         previous_results_html = ""
+                pattern_payload_raw = form.get("previous_pattern_payload", {}).get("value", "")
+                pattern_groups_history: List[List[List[int]]] = []
+                pattern_allow_zero_after_start = True
+                if pattern_payload_raw:
+                    try:
+                        decoded_payload = base64.b64decode(pattern_payload_raw.encode("ascii"))
+                        payload_obj = json.loads(decoded_payload.decode("utf-8"))
+                    except Exception:
+                        payload_obj = None
+                    if isinstance(payload_obj, dict):
+                        pattern_allow_zero_after_start = bool(payload_obj.get("allow_zero_after_start", True))
+                        groups_data = payload_obj.get("groups", [])
+                    elif isinstance(payload_obj, list):
+                        groups_data = payload_obj
+                    else:
+                        groups_data = []
+                    if isinstance(groups_data, list):
+                        for group in groups_data:
+                            if not isinstance(group, list):
+                                continue
+                            normalized: List[List[int]] = []
+                            for seq in group:
+                                if not isinstance(seq, list):
+                                    continue
+                                try:
+                                    normalized.append([int(v) for v in seq])
+                                except Exception:
+                                    continue
+                            pattern_groups_history.append(normalized)
                 
                 try:
                     limit_val = float(limit_raw)
@@ -960,6 +1115,9 @@ class App72Handler(BaseHTTPRequestHandler):
                         # previous_results_html zaten decode edilmiş durumda
                         encoded = base64.b64encode(previous_results_html.encode("utf-8")).decode("ascii")
                         preserved.append(f"<input type='hidden' name='previous_results_html' value='{html.escape(encoded)}'>")
+                    preserved.append(
+                        f"<input type='hidden' name='previous_pattern_payload' value='{html.escape(pattern_payload_raw)}'>"
+                    )
 
                     table = (
                         "<table><thead><tr><th>#</th><th>Dosya</th><th>Joker</th></tr></thead>"
@@ -1183,6 +1341,29 @@ class App72Handler(BaseHTTPRequestHandler):
 
                         sections.append(info + table)
 
+                pattern_panel_html = ""
+                combined_panel_html = ""
+                if pattern_enabled:
+                    current_patterns = build_patterns_from_xyz_lists(
+                        all_xyz_sets,
+                        allow_zero_after_start=pattern_allow_zero_after_start,
+                    )
+                    pattern_panel_html = render_pattern_panel(
+                        all_xyz_sets,
+                        allow_zero_after_start=pattern_allow_zero_after_start,
+                        file_names=all_file_names,
+                        joker_indices=joker_indices,
+                        sequence_name=sequence,
+                        precomputed_patterns=current_patterns,
+                    )
+                    updated_history = pattern_groups_history[:] if pattern_groups_history else []
+                    updated_history.append(current_patterns)
+                    combined_panel_html = render_combined_pattern_panel(
+                        updated_history,
+                        allow_zero_after_start=pattern_allow_zero_after_start,
+                    )
+                    pattern_groups_history = updated_history
+
                 if summary_mode:
                     header = "<tr><th>Dosya</th><th>XYZ Kümesi</th><th>Elenen Offsetler</th></tr>"
                     rows_summary: List[str] = []
@@ -1196,26 +1377,16 @@ class App72Handler(BaseHTTPRequestHandler):
                             "</tr>"
                         )
                     table = "<table><thead>" + header + "</thead><tbody>" + "".join(rows_summary) + "</tbody></table>"
-                    pattern_html = render_pattern_panel(
-                        all_xyz_sets,
-                        allow_zero_after_start=True,
-                        file_names=all_file_names,
-                        joker_indices=joker_indices,
-                        sequence_name=sequence,
-                    ) if pattern_enabled else ""
+                    pattern_html = pattern_panel_html if pattern_panel_html else ""
                     current_result = "<div class='card'>" + table + "</div>" + pattern_html
+                    if combined_panel_html:
+                        current_result += combined_panel_html
                 else:
                     # Non-summary: tüm dosya kartları + varsa örüntü paneli
-                    if pattern_enabled:
-                        sections.append(
-                            render_pattern_panel(
-                                all_xyz_sets,
-                                allow_zero_after_start=True,
-                                file_names=all_file_names,
-                                joker_indices=joker_indices,
-                                sequence_name=sequence,
-                            )
-                        )
+                    if pattern_panel_html:
+                        sections.append(pattern_panel_html)
+                    if combined_panel_html:
+                        sections.append(combined_panel_html)
                     current_result = "\n".join(sections)
                 
                 # Yeni analiz sonucunu bir bölüm içine al
@@ -1237,17 +1408,27 @@ class App72Handler(BaseHTTPRequestHandler):
                 # Sonuçların altına tekrar IOU formunu ekle (önceki sonuçları da hidden field olarak taşı)
                 # Önce body_without_form'u encode edip sakla (form eklenmeden önceki hali)
                 body_encoded = base64.b64encode(body_without_form.encode("utf-8")).decode("ascii")
-                
+                pattern_payload_encoded = base64.b64encode(
+                    json.dumps(
+                        {
+                            "groups": pattern_groups_history,
+                            "allow_zero_after_start": pattern_allow_zero_after_start,
+                        },
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ).decode("ascii")
+
                 form_html = render_iou_form()
                 # Form içindeki form tag'ini kaldırıp sadece içeriği al
                 form_content = form_html.replace("<form method='post' action='/iou' enctype='multipart/form-data'>", "").replace("</form>", "").strip()
-                
+
                 form_section = (
                     "<hr style='margin:32px 0; border:none; border-top:2px solid #ddd;'>"
                     "<h2 style='margin-top:24px;'>Yeni Analiz</h2>"
                     "<div class='card'>"
                     "<form method='post' action='/iou' enctype='multipart/form-data'>"
                     f"<input type='hidden' name='previous_results_html' value='{body_encoded}'>"
+                    f"<input type='hidden' name='previous_pattern_payload' value='{html.escape(pattern_payload_encoded)}'>"
                     + form_content +
                     "</form>"
                     "</div>"
