@@ -644,9 +644,6 @@ def build_chained_pattern_sequences(
     return display, total_unique
 
 
-ORDER_MAP = {-3: 0, -2: 1, -1: 2, 0: 3, 1: 4, 2: 5, 3: 6}
-
-
 def render_combined_pattern_panel(
     pattern_groups: List[List[List[int]]],
     meta_groups: List[Dict[str, Any]],
@@ -684,11 +681,15 @@ def render_combined_pattern_panel(
                     flat_joker_indices.add(cursor + j_int)
             cursor += len(names)
         grouped: Dict[int, List[List[int]]] = {}
+        group_order: List[int] = []
         for seq in combined:
             if not seq:
                 continue
             start_val = seq[0]
-            grouped.setdefault(start_val, []).append(seq)
+            if start_val not in grouped:
+                grouped[start_val] = []
+                group_order.append(start_val)
+            grouped[start_val].append(seq)
 
         def _render_group(patterns: List[List[int]]) -> str:
             return render_pattern_panel(
@@ -700,7 +701,7 @@ def render_combined_pattern_panel(
                 precomputed_patterns=patterns,
             )
         grouped_lines: List[str] = []
-        for start_val in sorted(grouped.keys(), key=lambda v: ORDER_MAP.get(v, 99)):
+        for start_val in group_order:
             patterns = grouped[start_val]
             panel_html = _render_group(patterns)
             summary = f"{_fmt_off(start_val)} ile başlayanlar ({len(patterns)})"
