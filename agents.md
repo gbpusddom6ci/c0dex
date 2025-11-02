@@ -139,6 +139,7 @@ Her uygulama tipik olarak şu modüllere sahiptir: `counter.py` (sayım + sinyal
 - DC istisnaları: 18:00; Cuma 16:48; (Pazar hariç) 19:12, 20:24; Cuma 16:00 DC olamaz.
 - IOU kısıtları: 15:36 ve 16:48 mumları günlük olarak IOU dışıdır; 18:00/19:12/20:24 ise “ikinci Pazar” gününde serbest kalır. İlk haftanın Cuma 16:48 IOU değildir.
 - IOU: Limit + ±tolerans (≥); çoklu CSV; XYZ; örüntüleme + Joker. Stacked analysis açık.
+- IOU örüntü zinciri: Ardışık analizlerde pattern listeleri `Toplu örüntüler` panelinde zincirlenip başlangıç değerine göre `<details>` başlıkları altında gruplanır. Joker/dosya bilgisi taşınır. Ayrıntılar için `app72_pattern_chaining.md`.
 - 12→72: 7×12m → 1×72m; Pazar 18:00 öncesi ve Cumartesi atlanır. Tahmin motoru hafta sonu boşluğunu atlar.
 
 ### 4.3 app80 (80m)
