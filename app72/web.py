@@ -644,8 +644,12 @@ def build_chained_pattern_sequences(
     return display, total_unique
 
 
+ORDER_MAP = {-3: 0, -2: 1, -1: 2, 0: 3, 1: 4, 2: 5, 3: 6}
+
+
 def render_combined_pattern_panel(
     pattern_groups: List[List[List[int]]],
+    meta_groups: List[Dict[str, Any]],
     allow_zero_after_start: bool,
 ) -> str:
     group_count = len(pattern_groups)
@@ -663,17 +667,50 @@ def render_combined_pattern_panel(
         if total_unique > len(combined):
             limit_note = f" (ilk {len(combined)})"
         info_line = f"<div><strong>Toplam birleşik örüntü:</strong> {total_unique}{limit_note}</div>"
-        lines: List[str] = []
-        for idx, seq in enumerate(combined):
-            token_parts = [f"<span class='pat-token'>{html.escape(_fmt_off(v))}</span>" for v in seq]
-            label = ", ".join(token_parts)
-            cont_vals = _continuation_options_for_sequence(seq, allow_zero_after_start)
-            cont_text = ", ".join(_fmt_off(v) for v in cont_vals) if cont_vals else "-"
-            number_html = f"<span style='display:inline-block; min-width:1.8em; font-weight:bold;'>{idx + 1}.</span>"
-            lines.append(
-                f"<div class='pat-line'>{number_html} {label} (devam: {html.escape(cont_text)})</div>"
+        flat_names: List[str] = []
+        flat_joker_indices: Set[int] = set()
+        cursor = 0
+        for meta in meta_groups[:group_count]:
+            raw_names = meta.get("file_names") if isinstance(meta, dict) else None
+            names = [str(n) for n in raw_names] if isinstance(raw_names, list) else []
+            flat_names.extend(names)
+            raw_jokers = meta.get("joker_indices") if isinstance(meta, dict) else None
+            if isinstance(raw_jokers, list):
+                for j in raw_jokers:
+                    try:
+                        j_int = int(j)
+                    except Exception:
+                        continue
+                    flat_joker_indices.add(cursor + j_int)
+            cursor += len(names)
+        grouped: Dict[int, List[List[int]]] = {}
+        for seq in combined:
+            if not seq:
+                continue
+            start_val = seq[0]
+            grouped.setdefault(start_val, []).append(seq)
+
+        def _render_group(patterns: List[List[int]]) -> str:
+            return render_pattern_panel(
+                [],
+                allow_zero_after_start=allow_zero_after_start,
+                file_names=flat_names if flat_names else None,
+                joker_indices=flat_joker_indices if flat_joker_indices else None,
+                sequence_name=None,
+                precomputed_patterns=patterns,
             )
-        inner = "<div style='margin-top:12px;'>" + info_line + "".join(lines) + "</div>"
+        grouped_lines: List[str] = []
+        for start_val in sorted(grouped.keys(), key=lambda v: ORDER_MAP.get(v, 99)):
+            patterns = grouped[start_val]
+            panel_html = _render_group(patterns)
+            summary = f"{_fmt_off(start_val)} ile başlayanlar ({len(patterns)})"
+            grouped_lines.append(
+                "<details>"
+                f"<summary>{html.escape(summary)}</summary>"
+                f"{panel_html}"
+                "</details>"
+            )
+        inner = "<div style='margin-top:12px;'>" + info_line + "".join(grouped_lines) + "</div>"
     return (
         f"<details class='card' style='margin-top:16px;'>"
         f"<summary>{html.escape(summary_label)}</summary>"
@@ -1020,6 +1057,7 @@ class App72Handler(BaseHTTPRequestHandler):
                 pattern_payload_raw = form.get("previous_pattern_payload", {}).get("value", "")
                 pattern_groups_history: List[List[List[int]]] = []
                 pattern_allow_zero_after_start = True
+                pattern_meta_history: List[Dict[str, Any]] = []
                 if pattern_payload_raw:
                     try:
                         decoded_payload = base64.b64decode(pattern_payload_raw.encode("ascii"))
@@ -1029,10 +1067,13 @@ class App72Handler(BaseHTTPRequestHandler):
                     if isinstance(payload_obj, dict):
                         pattern_allow_zero_after_start = bool(payload_obj.get("allow_zero_after_start", True))
                         groups_data = payload_obj.get("groups", [])
+                        meta_data = payload_obj.get("meta", [])
                     elif isinstance(payload_obj, list):
                         groups_data = payload_obj
+                        meta_data = []
                     else:
                         groups_data = []
+                        meta_data = []
                     if isinstance(groups_data, list):
                         for group in groups_data:
                             if not isinstance(group, list):
@@ -1046,6 +1087,34 @@ class App72Handler(BaseHTTPRequestHandler):
                                 except Exception:
                                     continue
                             pattern_groups_history.append(normalized)
+                    if isinstance(meta_data, list):
+                        for meta in meta_data:
+                            if not isinstance(meta, dict):
+                                pattern_meta_history.append({})
+                                continue
+                            names = meta.get("file_names")
+                            if not isinstance(names, list):
+                                names_out: List[str] = []
+                            else:
+                                names_out = [str(n) for n in names]
+                            jokers = meta.get("joker_indices")
+                            if isinstance(jokers, list):
+                                joker_out: List[int] = []
+                                for j in jokers:
+                                    try:
+                                        joker_out.append(int(j))
+                                    except Exception:
+                                        continue
+                            else:
+                                joker_out = []
+                            pattern_meta_history.append({
+                                "file_names": names_out,
+                                "joker_indices": joker_out,
+                            })
+                    if len(pattern_meta_history) < len(pattern_groups_history):
+                        pattern_meta_history.extend({} for _ in range(len(pattern_groups_history) - len(pattern_meta_history)))
+                    elif len(pattern_meta_history) > len(pattern_groups_history):
+                        pattern_meta_history = pattern_meta_history[:len(pattern_groups_history)]
                 
                 try:
                     limit_val = float(limit_raw)
@@ -1348,6 +1417,10 @@ class App72Handler(BaseHTTPRequestHandler):
                         all_xyz_sets,
                         allow_zero_after_start=pattern_allow_zero_after_start,
                     )
+                    current_meta = {
+                        "file_names": all_file_names[:],
+                        "joker_indices": sorted(joker_indices) if joker_indices else [],
+                    }
                     pattern_panel_html = render_pattern_panel(
                         all_xyz_sets,
                         allow_zero_after_start=pattern_allow_zero_after_start,
@@ -1358,11 +1431,15 @@ class App72Handler(BaseHTTPRequestHandler):
                     )
                     updated_history = pattern_groups_history[:] if pattern_groups_history else []
                     updated_history.append(current_patterns)
+                    updated_meta_history = pattern_meta_history[:] if pattern_meta_history else []
+                    updated_meta_history.append(current_meta)
                     combined_panel_html = render_combined_pattern_panel(
                         updated_history,
+                        updated_meta_history,
                         allow_zero_after_start=pattern_allow_zero_after_start,
                     )
                     pattern_groups_history = updated_history
+                    pattern_meta_history = updated_meta_history
 
                 if summary_mode:
                     header = "<tr><th>Dosya</th><th>XYZ Kümesi</th><th>Elenen Offsetler</th></tr>"
@@ -1413,6 +1490,7 @@ class App72Handler(BaseHTTPRequestHandler):
                         {
                             "groups": pattern_groups_history,
                             "allow_zero_after_start": pattern_allow_zero_after_start,
+                            "meta": pattern_meta_history,
                         },
                         separators=(",", ":"),
                     ).encode("utf-8")
