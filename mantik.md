@@ -91,3 +91,8 @@ Bu doküman, `app72` IOU örüntü (pattern) zincirleme mantığını diğer uyg
 - [ ] Joker ve dosya adları tooltip’te korunuyor.
 - [ ] Payload varsa decode/encode güvenli; yoksa güvenle baştan başlıyor.
 - [ ] Büyük setlerde performans kabul edilebilir; gerekirse beam/limit devreye alınabilir.
+
+## 8. Uygulama Örnekleri
+
+- app72: İlk uygulama; tüm zincirleme akışı burada implemente edildi.
+- app120: Aynı mantık 120m için taşındı; sınırsız beam/yol ve `Toplu örüntüler` paneli aktif.

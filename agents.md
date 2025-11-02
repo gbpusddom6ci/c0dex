@@ -166,6 +166,7 @@ Her uygulama tipik olarak şu modüllere sahiptir: `counter.py` (sayım + sinyal
 - IOU kısıtları: 16:00 ve 18:00 her gün dışlanır; 20:00 tüm günlerde IOU değildir (Pazar dahil).
 - IOV: Zıt işaretli, eşik üstü çiftler. IOU: Aynı işaretli, `limit + tolerans` ≥ eşik. Limit negatifse abs alınır.
 - IOU: Çoklu CSV, XYZ, örüntüleme + Joker, stacked (IOV klasik).
+- IOU örüntü zinciri: ardışık taramalarda `Toplu örüntüler` paneli (app72 mantığı) sonuçları beginning offset’e göre gruplayıp Joker/dosya meta bilgisini korur. Ayrıntılar için `app72_pattern_chaining.md`.
 - 60→120: Normalize eder, CSV indirilebilir.
 
 ### 4.7 app321 (60m)
