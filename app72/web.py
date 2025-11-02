@@ -671,7 +671,8 @@ def render_pattern_panel(
         st = _build_state_for_seq(seq)
         opts = _allowed_values_for_state(st, domain, allow_zero_after_start)
         cont = ", ".join(_fmt_off(v) for v in opts) if opts else "-"
-        lines.append(f"<div class='pat-line'>{label} (devam: {html.escape(cont)})</div>")
+        number_html = f"<span style='display:inline-block; min-width:1.8em; font-weight:bold;'>{idx_line + 1}.</span>"
+        lines.append(f"<div class='pat-line'>{number_html} {label} (devam: {html.escape(cont)})</div>")
     # Son değerlerin özeti (benzersiz, sıralı)
     last_vals = [seq[-1] for seq in patterns if seq]
     order = { -3:0, -2:1, -1:2, 0:3, 1:4, 2:5, 3:6 }
