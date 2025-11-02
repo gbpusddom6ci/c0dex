@@ -393,8 +393,9 @@ def render_iou_index() -> bytes:
 
 # --- Örüntüleme Yardımcıları ---
 
-PATTERN_MAX_PATHS = 10000
-PATTERN_BEAM_WIDTH = 10000
+# Sınırlar kaldırıldı: None => limitsiz (beam ve çıktı sayısı)
+PATTERN_MAX_PATHS = None
+PATTERN_BEAM_WIDTH = None
 
 def _fmt_off(v: int) -> str:
     return f"+{v}" if v > 0 else str(v)
@@ -526,7 +527,7 @@ def _advance_state(state: Dict[str, Any], value: int, step_idx: int, allow_zero_
     return ns
 
 
-def build_patterns_from_xyz_lists(xyz_sets: List[Set[int]], allow_zero_after_start: bool, max_paths: int = PATTERN_MAX_PATHS, beam_width: int = PATTERN_BEAM_WIDTH) -> List[List[int]]:
+def build_patterns_from_xyz_lists(xyz_sets: List[Set[int]], allow_zero_after_start: bool, max_paths: Optional[int] = PATTERN_MAX_PATHS, beam_width: Optional[int] = PATTERN_BEAM_WIDTH) -> List[List[int]]:
     if not xyz_sets:
         return []
     # Başlangıç durumu
@@ -549,17 +550,19 @@ def build_patterns_from_xyz_lists(xyz_sets: List[Set[int]], allow_zero_after_sta
             for v in allowed:
                 ns = _advance_state(st, v, idx, allow_zero_after_start)
                 next_states.append(ns)
-                if len(next_states) >= beam_width:
+                if beam_width is not None and len(next_states) >= beam_width:
                     # Basit beam budaması
                     break
-            if len(next_states) >= beam_width:
+            if beam_width is not None and len(next_states) >= beam_width:
                 break
         states = next_states
         if not states:
             break
 
     results: List[List[int]] = [st["seq"] for st in states if len(st.get("seq", [])) == len(xyz_sets)]
-    return results[:max_paths]
+    if max_paths is not None:
+        return results[:max_paths]
+    return results
 
 
 PATTERN_DOMAIN = {-3, -2, -1, 0, 1, 2, 3}
@@ -607,8 +610,8 @@ def _continuation_options_for_sequence(seq: List[int], allow_zero_after_start: b
 def build_chained_pattern_sequences(
     pattern_groups: List[List[List[int]]],
     allow_zero_after_start: bool,
-    max_paths: int = PATTERN_MAX_PATHS,
-    beam_width: int = PATTERN_BEAM_WIDTH,
+    max_paths: Optional[int] = PATTERN_MAX_PATHS,
+    beam_width: Optional[int] = PATTERN_BEAM_WIDTH,
 ) -> Tuple[List[List[int]], int]:
     if not pattern_groups:
         return [], 0
@@ -622,9 +625,9 @@ def build_chained_pattern_sequences(
                 if new_state is None:
                     continue
                 next_states.append(new_state)
-                if len(next_states) >= beam_width:
+                if beam_width is not None and len(next_states) >= beam_width:
                     break
-            if len(next_states) >= beam_width:
+            if beam_width is not None and len(next_states) >= beam_width:
                 break
         states = next_states
         if not states:
@@ -639,7 +642,7 @@ def build_chained_pattern_sequences(
             continue
         seen.add(key)
         total_unique += 1
-        if len(display) < max_paths:
+        if max_paths is None or len(display) < max_paths:
             display.append(seq)
     return display, total_unique
 
@@ -849,7 +852,7 @@ def render_pattern_panel(
     last_line = "<div><strong>Son değerler:</strong> " + (
         ", ".join(_fmt_off(v) for v in unique_last_sorted) if unique_last_sorted else "-"
     ) + "</div>"
-    info = f"<div><strong>Toplam örüntü:</strong> {len(patterns)} (ilk {min(len(patterns), PATTERN_MAX_PATHS)})</div>"
+    info = f"<div><strong>Toplam örüntü:</strong> {len(patterns)}</div>"
     seq_info = f"<div><strong>Sequence:</strong> {html.escape(sequence_name)}</div>" if sequence_name else ""
     return "<div class='card'><h3>Örüntüleme</h3>" + info + seq_info + last_line + "".join(lines) + "</div>"
 
