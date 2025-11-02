@@ -393,8 +393,8 @@ def render_iou_index() -> bytes:
 
 # --- Örüntüleme Yardımcıları ---
 
-PATTERN_MAX_PATHS = 1000
-PATTERN_BEAM_WIDTH = 512
+PATTERN_MAX_PATHS = 10000
+PATTERN_BEAM_WIDTH = 10000
 
 def _fmt_off(v: int) -> str:
     return f"+{v}" if v > 0 else str(v)
