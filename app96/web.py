@@ -556,7 +556,7 @@ def render_pattern_panel(
                     tk = html.escape(_fmt_off(seq[idx]))
                     style = ""
                     if highlight_set is not None and idx in highlight_set:
-                        style = " style='color:#c00; font-weight:700;'"
+                        style = " style='font-weight:700; font-style:italic;'"
                     if tp:
                         return (
                             f"<span class='pat-token' title='{html.escape(tp)}' data-tip='{html.escape(tp)}'{style}>{tk}</span>"
@@ -567,7 +567,7 @@ def render_pattern_panel(
                     tk = html.escape(_fmt_off(seq[idx]))
                     style = ""
                     if highlight_set is not None and idx in highlight_set:
-                        style = " style='color:#c00; font-weight:700;'"
+                        style = " style='font-weight:700; font-style:italic;'"
                     return f"<span class='pat-token'{style}>{tk}</span>"
 
             # Eğer bu pozisyon üçlü başlangıcı ise, üç tokenı ve iki virgülü tek blokta boya
