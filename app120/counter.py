@@ -674,6 +674,9 @@ def detect_iou_candles(
             if hit.ts.weekday() == 6:
                 continue
             tod = hit.ts.time()
+            # IOU: 14:00 her gün dışlanır
+            if tod == dtime(hour=14, minute=0):
+                continue
             # IOU: 16:00 her gün dışlanır
             if tod == dtime(hour=16, minute=0):
                 continue
