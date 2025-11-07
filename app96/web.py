@@ -257,6 +257,83 @@ def _infer_pattern_group_width(pattern_group: List[List[int]]) -> int:
     return 0
 
 
+def _find_mirror_chain_highlights(seq: List[int]) -> Set[int]:
+    """app96 chained paneli için: en az 3 ardışık grup (0 ile ayrılan, aynı işaretli, 
+    1-2-3 veya 3-2-1) + her ara 0'da ayna kuralı (sol/sağ komşu eşit) 
+    sağlayan zinciri kırmızı/bold vurgulamak üzere indeksleri döndürür.
+    Not: İlk ve son 0 vurgulanmaz; yalnız iç sınır 0'lar vurgulanır.
+    """
+    highlights: Set[int] = set()
+    n = len(seq)
+    if n == 0:
+        return highlights
+    zeros: List[int] = [i for i, v in enumerate(seq) if v == 0]
+    if len(zeros) < 2:
+        return highlights
+
+    # Grupları çıkar: iki 0 arasında tam 3 token ve ±1/±2/±3 monotone + aynı işaret
+    groups: List[Dict[str, Any]] = []
+    for zi in range(len(zeros) - 1):
+        a = zeros[zi]
+        b = zeros[zi + 1]
+        if b - a - 1 != 3:
+            continue
+        s0, s1, s2 = seq[a + 1], seq[a + 2], seq[b - 1]
+        if 0 in (s0, s1, s2):
+            continue
+        sgn = 1 if s0 > 0 else -1
+        if (s1 > 0) != (s0 > 0) or (s2 > 0) != (s0 > 0):
+            continue
+        abs_vals = [abs(s0), abs(s1), abs(s2)]
+        if abs_vals == [1, 2, 3]:
+            direction = "asc"
+        elif abs_vals == [3, 2, 1]:
+            direction = "desc"
+        else:
+            continue
+        groups.append({
+            "z_left": a,
+            "z_right": b,
+            "idxs": [a + 1, a + 2, b - 1],
+            "sign": sgn,
+            "dir": direction,
+        })
+
+    if not groups:
+        return highlights
+
+    # Ardışık zincir koşulu: aynı işaret ve ayna kuralı
+    # ayna: 0 sınırında sol/sağ komşular eşit => seq[z-1] == seq[z+1]
+    g = 0
+    while g < len(groups):
+        run_sign = groups[g]["sign"]
+        r = g
+        while r + 1 < len(groups):
+            # ortak sınır 0: groups[r] ile groups[r+1] arasında zeros[r+1]
+            z_boundary = zeros[r + 1]
+            if not (0 <= z_boundary - 1 < n and 0 <= z_boundary + 1 < n):
+                break
+            if seq[z_boundary - 1] != seq[z_boundary + 1]:
+                break
+            if groups[r + 1]["sign"] != run_sign:
+                break
+            r += 1
+
+        run_len = r - g + 1
+        if run_len >= 3:
+            # Bu aralıktaki tüm üçlü indekslerini vurgula
+            for k in range(g, r + 1):
+                highlights.update(groups[k]["idxs"])
+            # İç sınır 0'ları da vurgula (ilk ve son 0 hariç)
+            for k in range(g + 1, r + 1):
+                z_boundary = zeros[k]
+                if 0 <= z_boundary < n:
+                    highlights.add(z_boundary)
+        g = r + 1
+
+    return highlights
+
+
 def build_chained_pattern_sequences(
     pattern_groups: List[List[List[int]]],
     allow_zero_after_start: bool,
@@ -356,6 +433,10 @@ def render_combined_pattern_panel(
             grouped[start_val].append(seq)
 
         def _render_group(patterns: List[List[int]]) -> str:
+            # Chained panel: özel vurgu (3+ ardışık "ayna" üçlü grupları) uygulansın
+            pattern_highlights: List[Set[int]] = [
+                _find_mirror_chain_highlights(seq) for seq in patterns
+            ]
             return render_pattern_panel(
                 [],
                 allow_zero_after_start=allow_zero_after_start,
@@ -363,6 +444,7 @@ def render_combined_pattern_panel(
                 joker_indices=flat_joker_indices if flat_joker_indices else None,
                 sequence_name=None,
                 precomputed_patterns=patterns,
+                highlight_positions=pattern_highlights,
             )
 
         grouped_lines: List[str] = []
@@ -392,6 +474,7 @@ def render_pattern_panel(
     joker_indices: Optional[Set[int]] = None,
     sequence_name: Optional[str] = None,
     precomputed_patterns: Optional[List[List[int]]] = None,
+    highlight_positions: Optional[List[Set[int]]] = None,
 ) -> str:
     patterns = (
         precomputed_patterns
@@ -450,6 +533,9 @@ def render_pattern_panel(
 
     lines: List[str] = []
     for idx_line, seq in enumerate(patterns):
+        highlight_set: Optional[Set[int]] = None
+        if highlight_positions and idx_line < len(highlight_positions):
+            highlight_set = highlight_positions[idx_line]
         parts: List[str] = []
         i = 0
         while i < len(seq):
@@ -468,15 +554,21 @@ def render_pattern_panel(
                     if joker_indices and idx in joker_indices:
                         tp = (tp + " (Joker)").strip()
                     tk = html.escape(_fmt_off(seq[idx]))
+                    style = ""
+                    if highlight_set is not None and idx in highlight_set:
+                        style = " style='color:#c00; font-weight:700;'"
                     if tp:
                         return (
-                            f"<span class='pat-token' title='{html.escape(tp)}' data-tip='{html.escape(tp)}'>{tk}</span>"
+                            f"<span class='pat-token' title='{html.escape(tp)}' data-tip='{html.escape(tp)}'{style}>{tk}</span>"
                         )
-                    return f"<span class='pat-token'>{tk}</span>"
+                    return f"<span class='pat-token'{style}>{tk}</span>"
             else:
                 def token_html(idx:int) -> str:
                     tk = html.escape(_fmt_off(seq[idx]))
-                    return f"<span class='pat-token'>{tk}</span>"
+                    style = ""
+                    if highlight_set is not None and idx in highlight_set:
+                        style = " style='color:#c00; font-weight:700;'"
+                    return f"<span class='pat-token'{style}>{tk}</span>"
 
             # Eğer bu pozisyon üçlü başlangıcı ise, üç tokenı ve iki virgülü tek blokta boya
             color = triple_starts.get((idx_line, i))
