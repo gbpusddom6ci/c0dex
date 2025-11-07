@@ -251,6 +251,13 @@ def _apply_pattern_sequence(
     return st
 
 
+def _infer_pattern_group_width(pattern_group: List[List[int]]) -> int:
+    for seq in pattern_group:
+        if seq:
+            return len(seq)
+    return 0
+
+
 def build_chained_pattern_sequences(
     pattern_groups: List[List[List[int]]],
     allow_zero_after_start: bool,
@@ -314,9 +321,20 @@ def render_combined_pattern_panel(
         flat_names: List[str] = []
         flat_joker_indices: Set[int] = set()
         cursor = 0
-        for meta in meta_groups[:group_count]:
+        group_widths = [_infer_pattern_group_width(group) for group in pattern_groups]
+        for idx in range(group_count):
+            width = group_widths[idx] if idx < len(group_widths) else 0
+            meta = meta_groups[idx] if idx < len(meta_groups) else {}
             raw_names = meta.get("file_names") if isinstance(meta, dict) else None
             names = [str(n) for n in raw_names] if isinstance(raw_names, list) else []
+            length_for_cursor = width or len(names)
+            if width:
+                if len(names) < width:
+                    names = names + [""] * (width - len(names))
+                elif len(names) > width:
+                    names = names[:width]
+            elif length_for_cursor and not names:
+                names = [""] * length_for_cursor
             flat_names.extend(names)
             raw_jokers = meta.get("joker_indices") if isinstance(meta, dict) else None
             if isinstance(raw_jokers, list):
@@ -326,7 +344,7 @@ def render_combined_pattern_panel(
                     except Exception:
                         continue
                     flat_joker_indices.add(cursor + j_int)
-            cursor += len(names)
+            cursor += length_for_cursor
         grouped: Dict[int, List[List[int]]] = {}
         group_order: List[int] = []
         for seq in combined:
