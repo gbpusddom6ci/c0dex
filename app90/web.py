@@ -1153,8 +1153,8 @@ class App90Handler(BaseHTTPRequestHandler):
                         pass
                     i += 1
 
-                # Joker seçimi adımı: çoklu dosya + pattern_mode + confirm_iou yoksa
-                if len(files_list) > 1 and pattern_enabled and "confirm_iou" not in form:
+                # Joker seçimi adımı: confirm_iou yoksa (tek dosya olsa bile)
+                if not confirm_iou and files_list:
                     hidden_fields: List[str] = []
                     file_rows: List[str] = []
                     idx = 0
