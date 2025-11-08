@@ -15,6 +15,10 @@ FORBIDDEN_TIMES_NON_SUNDAY = {
     dtime(hour=19, minute=20),
     dtime(hour=20, minute=40),
 }
+IOU_FORBIDDEN_TIMES_ALWAYS = {
+    dtime(hour=15, minute=20),
+    dtime(hour=16, minute=40),
+}
 CLOSE_TOD = dtime(hour=16, minute=40)
 
 
@@ -611,7 +615,7 @@ def detect_iou_candles(
             ts = hit.ts
             weekday = ts.weekday()
             tod = ts.time()
-            if tod in FORBIDDEN_TIMES_ALWAYS:
+            if tod in FORBIDDEN_TIMES_ALWAYS or tod in IOU_FORBIDDEN_TIMES_ALWAYS:
                 continue
             if tod in FORBIDDEN_TIMES_NON_SUNDAY and weekday != 6:
                 continue

@@ -85,11 +85,11 @@ Hafta Sonu Kapanış/Açılış (tahmin):
 ### 3.7 IOU Zaman Kısıtları (Sinyal Olamayan Saatler)
 - app321: 18:00, 19:00, 20:00 IOU olamaz.
 - app48: 18:00, 18:48, 19:36 IOU olamaz.
-- app72: 18:00, 19:12, 20:24 IOU kısıtı vardır; ancak “ikinci Pazar” gününde bu saatler serbesttir. İlk haftanın Cuma 16:48 mumu IOU değildir.
-- app80: 18:00 her gün IOU değildir; 19:20 ve 20:40 yalnız Pazar günleri serbesttir; Cuma 16:40 IOU değildir.
-- app90: 18:00; (Pazar hariç) 19:30; Cuma 16:30 IOU değildir.
-- app96: 18:00; (Pazar hariç) 19:36; Cuma 16:24 IOU değildir.
-- app120: 18:00 ve Cuma 16:00 IOU değildir; 20:00 tüm günlerde IOU değildir (Pazar dahil).
+- app72: 15:36 ve 16:48 mumları her gün IOU değildir; 18:00, 19:12, 20:24 kısıtı ise “ikinci Pazar” gününde serbesttir. İlk haftanın Cuma 16:48 mumu ayrıca IOU dışıdır.
+- app80: 15:20, 16:40 ve 18:00 IOU değildir; 19:20 ve 20:40 yalnız Pazar günleri serbesttir; Cuma 16:40 ayrıca IOU dışıdır.
+- app90: 15:00, 16:40 ve 18:00 IOU değildir; (Pazar hariç) 19:30 ve Cuma 16:30 da IOU vermez.
+- app96: 14:48, 16:24 ve 18:00 IOU değildir; (Pazar hariç) 19:36 kısıtı sürer; Cuma 16:24 zaten IOU dışıdır.
+- app120: 16:00 ve 18:00 IOU değildir; 20:00 tüm günlerde IOU vermez (Pazar dahil).
 
 ### 3.8 XYZ (Haber Filtreli) Kümesi
 - IOU formlarında “XYZ kümesi (haber filtreli)” seçeneği ile, etkili haberi olmayan hit’lerin offsetleri elenir.
@@ -137,34 +137,36 @@ Her uygulama tipik olarak şu modüllere sahiptir: `counter.py` (sayım + sinyal
 ### 4.2 app72 (72m)
 - Port: 2172. Sekmeler: Analiz, DC List, Matrix, IOU Tarama, 12→72 Converter.
 - DC istisnaları: 18:00; Cuma 16:48; (Pazar hariç) 19:12, 20:24; Cuma 16:00 DC olamaz.
-- IOU kısıtları: 18:00/19:12/20:24 IOU değildir; “ikinci Pazar” gününde serbesttir. İlk haftanın Cuma 16:48 IOU değildir.
+- IOU kısıtları: 15:36 ve 16:48 mumları günlük olarak IOU dışıdır; 18:00/19:12/20:24 ise “ikinci Pazar” gününde serbest kalır. İlk haftanın Cuma 16:48 IOU değildir.
 - IOU: Limit + ±tolerans (≥); çoklu CSV; XYZ; örüntüleme + Joker. Stacked analysis açık.
+- IOU örüntü zinciri: Ardışık analizlerde pattern listeleri `Toplu örüntüler` panelinde zincirlenip başlangıç değerine göre `<details>` başlıkları altında gruplanır. Joker/dosya bilgisi taşınır. Ayrıntılar için `app72_pattern_chaining.md`.
 - 12→72: 7×12m → 1×72m; Pazar 18:00 öncesi ve Cumartesi atlanır. Tahmin motoru hafta sonu boşluğunu atlar.
 
 ### 4.3 app80 (80m)
 - Port: 2180. Sekmeler: Analiz, DC List, Matrix, IOU Tarama, 20→80 Converter.
-- DC/IOU kısıtları: (Pazar hariç) 18:00, 19:20, 20:40 DC olamaz; Cuma 16:40 kapanış. IOU’da 18:00 her gün dışlanır; 19:20/20:40 yalnızca Pazar günleri serbesttir.
+- DC/IOU kısıtları: (Pazar hariç) 18:00, 19:20, 20:40 DC olamaz; Cuma 16:40 kapanış. IOU’da 15:20, 16:40, 18:00 her gün dışlanır; 19:20/20:40 yalnızca Pazar günleri serbesttir.
 - IOU: Limit + ±tolerans (≥), çoklu CSV, XYZ, örüntüleme + Joker, stacked.
 - 20→80: 4×20m → 1×80m (open=ilk, close=son, high/low blok max/min). Tahminde hafta sonu atlanır.
 
 ### 4.4 app90 (90m)
 - Port: 2190. Sekmeler: Analiz, DC List, Matrix, IOU Tarama, 30→90 Converter.
-- DC/IOU kısıtları: 18:00; (Pazar hariç) 19:30; Cuma 16:30.
+- DC/IOU kısıtları: 18:00; (Pazar hariç) 19:30; Cuma 16:30. IOU’da ek olarak 15:00 ve 16:40 her gün dışlanır.
 - IOU: Limit + ±tolerans (≥), çoklu CSV, XYZ, örüntüleme + Joker, stacked.
 - 30→90: 3×30m → 1×90m; Cumartesi ve Pazar 18:00 öncesi atlanır.
 
 ### 4.5 app96 (96m)
 - Port: 2196. Sekmeler: Analiz, DC List, Matrix, IOU Tarama, 12→96 Converter.
-- DC/IOU kısıtları: 18:00; (Pazar hariç) 19:36; Cuma 16:24.
+- DC/IOU kısıtları: 18:00; (Pazar hariç) 19:36; Cuma 16:24. IOU’da ek olarak 14:48 ve 16:24 her gün dışlanır.
 - IOU: Limit + ±tolerans (≥), çoklu CSV, XYZ, örüntüleme + Joker, stacked.
 - 12→96: 8×12m → 1×96m; Cumartesi ve Pazar 18:00 öncesi atlanır.
 
 ### 4.6 app120 (120m)
 - Port: 2120. Sekmeler: Analiz, DC List, Matrix, IOV Tarama, IOU Tarama, 60→120 Converter.
 - DC istisnaları: 18:00 DC değildir; (Pazar hariç) 20:00 DC olamaz; Cuma 16:00 DC sayılmaz.
-- IOU kısıtları: 18:00, Cuma 16:00 dışlanır; 20:00 tüm günlerde IOU değildir (Pazar dahil).
+- IOU kısıtları: 16:00 ve 18:00 her gün dışlanır; 20:00 tüm günlerde IOU değildir (Pazar dahil).
 - IOV: Zıt işaretli, eşik üstü çiftler. IOU: Aynı işaretli, `limit + tolerans` ≥ eşik. Limit negatifse abs alınır.
 - IOU: Çoklu CSV, XYZ, örüntüleme + Joker, stacked (IOV klasik).
+- IOU örüntü zinciri: ardışık taramalarda `Toplu örüntüler` paneli (app72 mantığı) sonuçları beginning offset’e göre gruplayıp Joker/dosya meta bilgisini korur. Ayrıntılar için `app72_pattern_chaining.md`.
 - 60→120: Normalize eder, CSV indirilebilir.
 
 ### 4.7 app321 (60m)
@@ -217,7 +219,7 @@ Her uygulama tipik olarak şu modüllere sahiptir: `counter.py` (sayım + sinyal
 - Limit=0 çoğu sinyali eler; IOU’da tolerans varsayılanı (0.005) nedeni ile pratik eşik budur.
 - DC List sekmeleri ham DC’leri CSV’ye çıkarmak için uygundur.
 - IOU sonuçlarındaki “(rule)” etiketi DC kapsaması ile eşleşir; app48’te “syn/real” ayrımı vardır.
-- app72’de “ikinci Pazar” kuralı: IOU kısıtlı saatler (18:00, 19:12, 20:24) ikinci Pazar gününde serbesttir; XYZ’de özel slot koruma notu vardır.
+- app72’de “ikinci Pazar” kuralı: IOU kısıtlı saatler (18:00, 19:12, 20:24) ikinci Pazar gününde serbesttir; 15:36 slotu her zaman kapalı kalır, 16:48 ise XYZ’de özel slot koruması altındadır.
 
 
 — Son —

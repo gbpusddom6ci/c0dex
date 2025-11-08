@@ -8,6 +8,10 @@ from typing import List, Optional, Tuple, Dict, Callable
 MINUTES_PER_STEP = 96
 DEFAULT_START_TOD = dtime(hour=18, minute=0)
 IOU_TOLERANCE = 0.005
+IOU_FORBIDDEN_TIMES_ALWAYS = {
+    dtime(hour=14, minute=48),
+    dtime(hour=16, minute=24),
+}
 
 
 @dataclass
@@ -38,6 +42,8 @@ def is_forbidden_dc_time(ts: datetime) -> bool:
 
 
 def is_forbidden_iou_time(ts: datetime) -> bool:
+    if ts.time() in IOU_FORBIDDEN_TIMES_ALWAYS:
+        return True
     return is_forbidden_dc_time(ts)
 
 
@@ -522,6 +528,8 @@ def _detect_signal_candles(
     if seq_key not in SEQUENCES:
         seq_key = "S2"
     seq_values = SEQUENCES[seq_key][:]
+    # Dizi "skip" kuralı: S1'de 1 ve 3; S2'de 1 ve 5 sinyal dışıdır
+    skip_values = {1, 3} if seq_key == "S1" else {1, 5}
     threshold = abs(limit)
     tol = abs(tolerance or 0.0)
     effective_threshold = threshold + tol
@@ -535,6 +543,8 @@ def _detect_signal_candles(
         alignment = compute_offset_alignment(candles, dc_flags, base_idx, seq_values, offset)
         hits: List[SignalHit] = []
         for seq_val, alloc in zip(seq_values, alignment.hits):
+            if seq_val in skip_values:
+                continue
             idx = alloc.idx
             if idx is None or not (0 <= idx < len(candles)):
                 continue
