@@ -785,7 +785,7 @@ def render_analyze_index() -> bytes:
       </form>
     </div>
     <p>CSV başlıkları: <code>Time, Open, High, Low, Close (Last)</code> (eş anlamlılar desteklenir).</p>
-    <p><strong>Not:</strong> DC istisnaları: 18:00, (Pazar hariç) 19:30 ve Cuma 16:30. IOU taraması 15:00, 16:30, 16:40 ve 18:00 slotlarını her gün; (Pazar hariç) 19:30 slotunu ise hafta içi/hafta sonu ayrımı gözetmeden dışlar.</p>
+    <p><strong>Not:</strong> 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 mumları DC sayılmaz; bu slotlar IOU taramasında da dışlanır.</p>
     """
     return page("app90", body, active_tab="analyze")
 
@@ -932,7 +932,7 @@ def render_iou_form() -> str:
       </form>
     </div>
     <p>IOU taraması, limit üzerindeki OC/PrevOC değerlerinin aynı işaretli olduğu mumları dosya bazında listeler. Çoklu CSV seçimini destekler.</p>
-    <p><strong>Not:</strong> 15:00, 16:30, 16:40 ve 18:00 mumları her gün IOU dışındadır; (Pazar hariç) 19:30 slotu da listeye girmez.</p>
+    <p><strong>Not:</strong> 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 mumları IOU listesine dahil edilmez.</p>
     """
 
 
