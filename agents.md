@@ -87,7 +87,7 @@ Hafta Sonu Kapanış/Açılış (tahmin):
 - app48: 18:00, 18:48, 19:36 IOU olamaz.
 - app72: 15:36 ve 16:48 mumları her gün IOU değildir; 18:00, 19:12, 20:24 kısıtı ise “ikinci Pazar” gününde serbesttir. İlk haftanın Cuma 16:48 mumu ayrıca IOU dışıdır.
 - app80: 15:20, 16:40 ve 18:00 IOU değildir; 19:20 ve 20:40 yalnız Pazar günleri serbesttir; Cuma 16:40 ayrıca IOU dışıdır.
-- app90: 15:00, 16:40 ve 18:00 IOU değildir; (Pazar hariç) 19:30 ve Cuma 16:30 da IOU vermez.
+- app90: 15:00, 16:30, 16:40 ve 18:00 IOU değildir; (Pazar hariç) 19:30 da IOU vermez.
 - app96: 14:48, 16:24 ve 18:00 IOU değildir; (Pazar hariç) 19:36 kısıtı sürer; Cuma 16:24 zaten IOU dışıdır.
 - app120: 16:00 ve 18:00 IOU değildir; 20:00 tüm günlerde IOU vermez (Pazar dahil).
 
@@ -150,7 +150,7 @@ Her uygulama tipik olarak şu modüllere sahiptir: `counter.py` (sayım + sinyal
 
 ### 4.4 app90 (90m)
 - Port: 2190. Sekmeler: Analiz, DC List, Matrix, IOU Tarama, 30→90 Converter.
-- DC/IOU kısıtları: 18:00; (Pazar hariç) 19:30; Cuma 16:30. IOU’da ek olarak 15:00 ve 16:40 her gün dışlanır.
+- DC kısıtları: 18:00; (Pazar hariç) 19:30; Cuma 16:30. IOU’da bu slotlara ek olarak 15:00, 16:30, 16:40 ve 18:00 her gün dışlanır; (Pazar hariç) 19:30 yine IOU vermez.
 - IOU: Limit + ±tolerans (≥), çoklu CSV, XYZ, örüntüleme + Joker, stacked.
 - 30→90: 3×30m → 1×90m; Cumartesi ve Pazar 18:00 öncesi atlanır.
 
