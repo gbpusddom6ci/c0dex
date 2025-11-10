@@ -65,7 +65,7 @@ Her timeframe klasörü benzer bir kalıbı izler:
 | app48    | 48 dk     | 2020 | 12→48     | Synthetic 18:00 & 18:48; 18:00/18:48/19:36 DC & IOU dışında |
 | app72    | 72 dk     | 2172 | 12→72     | 18:00, 19:12, 20:24 DC olamaz; ilk haftanın Cuma 16:48 IOU dışında |
 | app80    | 80 dk     | 2180 | 20→80     | 18:00, 19:20, 20:40 ve tüm Cuma 16:40 DC & IOU dışında |
-| app90    | 90 dk     | 2190 | 30→90     | 18:00 & (Pazar hariç) 19:30 DC/IOU dışı; Cuma 16:30 DC değil; 15:00, 16:30, 16:40 IOU dışı |
+| app90    | 90 dk     | 2190 | 30→90     | 18:00, (Pazar hariç) 19:30 ve Cuma 16:30 DC & IOU dışında |
 | app96    | 96 dk     | 2196 | 12→96     | 18:00, (Pazar hariç) 19:36 ve Cuma 16:24 DC & IOU dışında |
 | app120   | 120 dk    | 2120 | 60→120    | 18:00 DC & IOU dışında; Pazar hariç 20:00 ve tüm Cuma 16:00 hariç |
 | app321   | 60 dk     | 2019 | —         | Pazar dışı 20:00 DC olamaz; 18:00/19:00/20:00 IOU dışında |
@@ -109,7 +109,7 @@ Her IOU taraması aşağıdaki zamanları doğrudan hariç tutar:
 - **app48:** 18:00, 18:48, 19:36
 - **app72:** 18:00, 19:12, 20:24 ve iki haftalık verinin ilk haftası Cuma 16:48
 - **app80:** 18:00, 19:20, 20:40 ve tüm Cuma 16:40
-- **app90:** 15:00, 16:30, 16:40 ve 18:00 her gün; (Pazar hariç) 19:30
+- **app90:** 18:00, (Pazar hariç) 19:30 ve Cuma 16:30
 - **app96:** 18:00, (Pazar hariç) 19:36 ve Cuma 16:24
 - **app120:** 18:00, Pazar hariç 20:00 ve tüm Cuma 16:00
 - **app321:** 18:00, 19:00, 20:00
