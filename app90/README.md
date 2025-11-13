@@ -35,8 +35,9 @@ Sekmeler:
 1. **Analiz** – Sequence sayımı ve tahminler  
 2. **DC List** – Tespit edilen DC mumları  
 3. **Matrix** – Tüm offsetlerin tablo görünümü  
-4. **30→90 Converter** – 30 dakikalık mumları tek seferde dönüştürür  
-5. **IOU Tarama** – Limit + tolerans koşulunu sağlayan aynı işaretli OC/PrevOC çiftlerini listeler, XYZ haber filtresi isteğe bağlıdır
+4. **OC/PrevOC Toplamı** – PrevOC limiti aşıldığında OC değerini offset bazında toplayarak +/− katkıları özetler  
+5. **30→90 Converter** – 30 dakikalık mumları tek seferde dönüştürür  
+6. **IOU Tarama** – Limit + tolerans koşulunu sağlayan aynı işaretli OC/PrevOC çiftlerini listeler, XYZ haber filtresi isteğe bağlıdır
 
 ## CSV Beklentileri
 

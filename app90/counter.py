@@ -230,6 +230,40 @@ class SignalReport:
     offsets: List[SignalOffsetResult]
 
 
+@dataclass
+class PrevOCContribution:
+    seq_value: int
+    idx: int
+    ts: datetime
+    oc: float
+    prev_oc: float
+    contribution: float
+    rule: str  # 'opposite' => +, 'same' => -
+    dc_flag: bool
+    used_dc: bool
+
+
+@dataclass
+class PrevOCOffsetResult:
+    offset: int
+    offset_status: str
+    target_ts: Optional[datetime]
+    actual_ts: Optional[datetime]
+    missing_steps: int
+    total: float
+    contributions: List[PrevOCContribution]
+
+
+@dataclass
+class PrevOCReport:
+    sequence: str
+    limit: float
+    base_idx: int
+    base_status: str
+    base_ts: Optional[datetime]
+    offsets: List[PrevOCOffsetResult]
+
+
 def compute_sequence_allocations(
     candles: List[Candle],
     dc_flags: List[Optional[bool]],
@@ -607,6 +641,92 @@ def detect_iou_candles(
         tolerance,
         condition=lambda oc, prev: oc * prev > 0,
         empty_error="IOU analizi için mum verisi gerekli",
+    )
+
+
+def compute_prevoc_sum_report(
+    candles: List[Candle],
+    sequence: str,
+    limit: float,
+    tolerance: float = IOU_TOLERANCE,
+) -> PrevOCReport:
+    if not candles:
+        raise ValueError("PrevOC analizi için mum verisi gerekli")
+
+    seq_key = (sequence or "S2").upper()
+    if seq_key not in SEQUENCES:
+        seq_key = "S2"
+    seq_values = SEQUENCES[seq_key][:]
+    skip_values = {1, 3} if seq_key == "S1" else {1, 5}
+
+    threshold = abs(limit)
+    tol = abs(tolerance or 0.0)
+    effective_threshold = threshold + tol
+
+    base_idx, base_status = find_start_index(candles, DEFAULT_START_TOD)
+    base_ts = candles[base_idx].ts if 0 <= base_idx < len(candles) else None
+    dc_flags = compute_dc_flags(candles)
+
+    offsets: List[PrevOCOffsetResult] = []
+    for offset in range(-3, 4):
+        alignment = compute_offset_alignment(candles, dc_flags, base_idx, seq_values, offset)
+        contributions: List[PrevOCContribution] = []
+        total = 0.0
+
+        for seq_val, alloc in zip(seq_values, alignment.hits):
+            if seq_val in skip_values:
+                continue
+            idx = alloc.idx
+            if idx is None or idx <= 0 or idx >= len(candles):
+                continue
+            ts = candles[idx].ts
+            if is_forbidden_iou_time(ts):
+                continue
+            oc = candles[idx].close - candles[idx].open
+            prev_oc = candles[idx - 1].close - candles[idx - 1].open
+            if not oc or not prev_oc:
+                continue
+            if abs(prev_oc) < effective_threshold:
+                continue
+            rule = "opposite" if oc * prev_oc < 0 else "same"
+            contribution = abs(oc)
+            if rule == "same":
+                contribution = -contribution
+            total += contribution
+            dc_flag = bool(dc_flags[idx]) if 0 <= idx < len(dc_flags) else False
+            contributions.append(
+                PrevOCContribution(
+                    seq_value=seq_val,
+                    idx=idx,
+                    ts=ts,
+                    oc=oc,
+                    prev_oc=prev_oc,
+                    contribution=contribution,
+                    rule=rule,
+                    dc_flag=dc_flag,
+                    used_dc=alloc.used_dc,
+                )
+            )
+
+        offsets.append(
+            PrevOCOffsetResult(
+                offset=offset,
+                offset_status=alignment.offset_status,
+                target_ts=alignment.target_ts,
+                actual_ts=alignment.actual_ts,
+                missing_steps=alignment.missing_steps,
+                total=total,
+                contributions=contributions,
+            )
+        )
+
+    return PrevOCReport(
+        sequence=seq_key,
+        limit=threshold,
+        base_idx=base_idx,
+        base_status=base_status,
+        base_ts=base_ts,
+        offsets=offsets,
     )
 
 

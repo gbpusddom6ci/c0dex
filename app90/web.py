@@ -22,6 +22,7 @@ from .counter import (
     compute_offset_alignment,
     predict_time_after_n_steps,
     detect_iou_candles,
+    compute_prevoc_sum_report,
 )
 from .main import (
     Candle as ConverterCandle,
@@ -726,6 +727,7 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
       <a href='/' class='{ 'active' if active_tab=="analyze" else '' }'>Analiz</a>
       <a href='/dc' class='{ 'active' if active_tab=="dc" else '' }'>DC List</a>
       <a href='/matrix' class='{ 'active' if active_tab=="matrix" else '' }'>Matrix</a>
+      <a href='/ocprev' class='{ 'active' if active_tab=="ocprev" else '' }'>OC/PrevOC</a>
       <a href='/converter' class='{ 'active' if active_tab=="converter" else '' }'>30→90 Converter</a>
       <a href='/iou' class='{ 'active' if active_tab=="iou" else '' }'>IOU Tarama</a>
     </nav>
@@ -856,6 +858,57 @@ def render_matrix_index() -> bytes:
     </div>
     """
     return page("app90 - Matrix", body, active_tab="matrix")
+
+
+def render_ocprev_form() -> str:
+    return """
+    <div class='card'>
+      <form method='post' action='/ocprev' enctype='multipart/form-data'>
+        <div class='row'>
+          <div>
+            <label>CSV</label>
+            <input type='file' name='csv' accept='.csv,text/csv' required multiple />
+          </div>
+          <div>
+            <label>Zaman Dilimi</label>
+            <div>90m</div>
+          </div>
+          <div>
+            <label>Girdi TZ</label>
+            <select name='input_tz'>
+              <option value='UTC-5'>UTC-5</option>
+              <option value='UTC-4' selected>UTC-4</option>
+            </select>
+          </div>
+          <div>
+            <label>Dizi</label>
+            <select name='sequence'>
+              <option value='S1' selected>S1</option>
+              <option value='S2'>S2</option>
+            </select>
+          </div>
+          <div>
+            <label>Limit (|PrevOC|)</label>
+            <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
+          </div>
+          <div>
+            <label>± Tolerans</label>
+            <input type='number' step='0.0001' min='0' value='0.005' name='tolerance' />
+          </div>
+        </div>
+        <div style='margin-top:12px;'>
+          <button type='submit'>Toplamları Hesapla</button>
+        </div>
+      </form>
+    </div>
+    <p>PrevOC limiti, |PrevOC| ≥ (limit + tolerans) koşulunu sağlar. Şart sağlandığında OC değeri aynı işaretliyse negatif, zıt işaretliyse pozitif katkıyla toplanır.</p>
+    <p>S1 için 1 ve 3, S2 için 1 ve 5 değerleri dahil edilmez; offset aralığı -3..+3 otomatik hesaplanır.</p>
+    """
+
+
+def render_ocprev_index() -> bytes:
+    body = render_ocprev_form()
+    return page("app90 - OC/PrevOC", body, active_tab="ocprev")
 
 
 def render_converter_index() -> bytes:
@@ -999,6 +1052,8 @@ class App90Handler(BaseHTTPRequestHandler):
             body = render_dc_index()
         elif self.path == "/matrix":
             body = render_matrix_index()
+        elif self.path == "/ocprev":
+            body = render_ocprev_index()
         elif self.path == "/converter":
             body = render_converter_index()
         elif self.path == "/iou":
@@ -1118,6 +1173,171 @@ class App90Handler(BaseHTTPRequestHandler):
                 _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(zip_bytes)
+                return
+
+            if self.path == "/ocprev":
+                sequence = (form.get("sequence", {}).get("value") or "S1").strip() or "S1"
+                tz_value = (form.get("input_tz", {}).get("value") or "UTC-4").strip()
+                limit_raw = (form.get("limit", {}).get("value") or "0").strip()
+                tol_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
+
+                try:
+                    limit_val = float(limit_raw)
+                except Exception:
+                    limit_val = 0.0
+                limit_val = abs(limit_val)
+                try:
+                    tolerance_val = float(tol_raw)
+                except Exception:
+                    tolerance_val = IOU_TOLERANCE
+                tolerance_val = abs(tolerance_val)
+                effective_threshold = limit_val + tolerance_val
+
+                offsets_order = [-3, -2, -1, 0, 1, 2, 3]
+                aggregate_stats = {
+                    o: {"total": 0.0, "hits": 0, "pos": 0, "neg": 0}
+                    for o in offsets_order
+                }
+
+                tz_norm = tz_value.upper().replace(" ", "")
+                shift_hours = 1 if tz_norm in {"UTC-5", "UTC-05", "UTC-05:00", "-05:00"} else 0
+                tz_label = "UTC-5 -> UTC-4 (+1h)" if shift_hours else "UTC-4 -> UTC-4 (+0h)"
+                delta = timedelta(hours=shift_hours)
+
+                cards: List[str] = []
+                for entry in files_list:
+                    entry_data = entry.get("data")
+                    text_entry = entry_data.decode("utf-8", errors="replace") if isinstance(entry_data, (bytes, bytearray)) else str(entry_data)
+                    name = entry.get("filename") or "dosya"
+                    try:
+                        candles_entry = load_candles_from_text(text_entry, CounterCandle)
+                    except ValueError as exc:
+                        raise ValueError(f"{name}: {exc}")
+                    if not candles_entry:
+                        raise ValueError(f"{name}: Veri boş veya çözümlenemedi")
+                    if shift_hours:
+                        candles_entry = [
+                            CounterCandle(ts=c.ts + delta, open=c.open, high=c.high, low=c.low, close=c.close)
+                            for c in candles_entry
+                        ]
+
+                    try:
+                        report = compute_prevoc_sum_report(candles_entry, sequence, limit_val, tolerance_val)
+                    except ValueError as exc:
+                        raise ValueError(f"{name}: {exc}")
+
+                    total_sum = sum(item.total for item in report.offsets)
+                    info_lines = [
+                        f"<div><strong>Dosya:</strong> {html.escape(name)}</div>",
+                        f"<div><strong>Data:</strong> {len(candles_entry)} candles</div>",
+                        f"<div><strong>Range:</strong> {html.escape(candles_entry[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles_entry[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>",
+                        f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>",
+                        f"<div><strong>Dizi:</strong> {html.escape(report.sequence)}</div>",
+                        f"<div><strong>Limit:</strong> {limit_val:.5f}</div>",
+                        f"<div><strong>Tolerans:</strong> {tolerance_val:.5f}</div>",
+                        f"<div><strong>Eşik (|PrevOC|):</strong> {effective_threshold:.5f}</div>",
+                        f"<div><strong>Genel toplam:</strong> {format_pip(total_sum)}</div>",
+                    ]
+
+                    summary_rows: List[str] = []
+                    detail_sections: List[str] = []
+                    for item in report.offsets:
+                        label = f"+{item.offset}" if item.offset > 0 else str(item.offset)
+                        contributions = item.contributions
+                        hit_count = len(contributions)
+                        pos_count = sum(1 for contrib in contributions if contrib.contribution > 0)
+                        neg_count = sum(1 for contrib in contributions if contrib.contribution < 0)
+                        ts_ref = item.actual_ts or item.target_ts
+                        ts_label = ts_ref.strftime("%Y-%m-%d %H:%M:%S") if ts_ref else "-"
+                        status_bits = [item.offset_status]
+                        if item.missing_steps:
+                            status_bits.append(f"missing {item.missing_steps}")
+                        status_label = ", ".join(bit for bit in status_bits if bit)
+                        summary_rows.append(
+                            f"<tr><td>{label}</td><td>{hit_count}</td><td>{pos_count}</td><td>{neg_count}</td>"
+                            f"<td>{format_pip(item.total)}</td><td>{html.escape(status_label)}</td><td>{html.escape(ts_label)}</td></tr>"
+                        )
+
+                        if contributions:
+                            detail_rows = []
+                            for contrib in contributions:
+                                ts_s = contrib.ts.strftime("%Y-%m-%d %H:%M:%S")
+                                rule_label = "Zıt (+)" if contrib.contribution > 0 else "Aynı (-)"
+                                detail_rows.append(
+                                    f"<tr>"
+                                    f"<td>{contrib.seq_value}</td>"
+                                    f"<td>{contrib.idx}</td>"
+                                    f"<td>{html.escape(ts_s)}</td>"
+                                    f"<td>{format_pip(contrib.prev_oc)}</td>"
+                                    f"<td>{format_pip(contrib.oc)}</td>"
+                                    f"<td>{rule_label}</td>"
+                                    f"<td>{format_pip(contrib.contribution)}</td>"
+                                    f"<td>{'Evet' if contrib.dc_flag else 'Hayır'}</td>"
+                                    f"</tr>"
+                                )
+                        else:
+                            detail_rows = ["<tr><td colspan='8'>Uygun mum bulunamadı.</td></tr>"]
+                        detail_table = (
+                            "<table><thead><tr><th>Seq</th><th>Index</th><th>Timestamp</th><th>PrevOC</th>"
+                            "<th>OC</th><th>Kural</th><th>Katkı</th><th>DC</th></tr></thead>"
+                            f"<tbody>{''.join(detail_rows)}</tbody></table>"
+                        )
+                        detail_sections.append(
+                            f"<details{' open' if item.offset == 0 else ''}><summary>{label} detay</summary>{detail_table}</details>"
+                        )
+
+                        agg_entry = aggregate_stats.setdefault(item.offset, {"total": 0.0, "hits": 0, "pos": 0, "neg": 0})
+                        agg_entry["total"] += item.total
+                        agg_entry["hits"] += hit_count
+                        agg_entry["pos"] += pos_count
+                        agg_entry["neg"] += neg_count
+
+                    summary_table = (
+                        "<table><thead>"
+                        "<tr><th>Offset</th><th>Hit</th><th>Zıt (+)</th><th>Aynı (-)</th><th>Toplam</th><th>Durum</th><th>Referans TS</th></tr>"
+                        "</thead><tbody>"
+                        + "".join(summary_rows)
+                        + "</tbody></table>"
+                    )
+
+                    card_html = (
+                        "<div class='card'>"
+                        f"<h3>{html.escape(name)}</h3>"
+                        + "".join(info_lines)
+                        + summary_table
+                        + "".join(detail_sections)
+                        + "</div>"
+                    )
+                    cards.append(card_html)
+
+                aggregate_rows = []
+                total_all = 0.0
+                for offset in offsets_order:
+                    stats = aggregate_stats.get(offset, {"total": 0.0, "hits": 0, "pos": 0, "neg": 0})
+                    total_all += stats["total"]
+                    label = f"+{offset}" if offset > 0 else str(offset)
+                    aggregate_rows.append(
+                        f"<tr><td>{label}</td><td>{stats['hits']}</td><td>{stats['pos']}</td><td>{stats['neg']}</td><td>{format_pip(stats['total'])}</td></tr>"
+                    )
+                aggregate_table = (
+                    "<table><thead><tr><th>Offset</th><th>Hit</th><th>Zıt (+)</th><th>Aynı (-)</th><th>Toplam</th></tr></thead>"
+                    f"<tbody>{''.join(aggregate_rows)}</tbody></table>"
+                )
+                aggregate_card = (
+                    "<div class='card'>"
+                    "<h3>Toplam Özet</h3>"
+                    f"<div><strong>Dosya sayısı:</strong> {len(files_list)}</div>"
+                    f"<div><strong>Genel toplam:</strong> {format_pip(total_all)}</div>"
+                    + aggregate_table
+                    + "</div>"
+                )
+
+                body = render_ocprev_form() + "".join(cards) + aggregate_card
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
+                self.end_headers()
+                self.wfile.write(page("app90 - OC/PrevOC", body, active_tab="ocprev"))
                 return
 
             if self.path == "/iou":
