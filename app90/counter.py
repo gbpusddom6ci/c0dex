@@ -680,8 +680,6 @@ def compute_prevoc_sum_report(
             if idx is None or idx <= 0 or idx >= len(candles):
                 continue
             ts = candles[idx].ts
-            if is_forbidden_iou_time(ts):
-                continue
             oc = candles[idx].close - candles[idx].open
             prev_oc = candles[idx - 1].close - candles[idx - 1].open
             if not oc or not prev_oc:
