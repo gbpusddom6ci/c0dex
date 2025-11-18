@@ -1807,59 +1807,6 @@ class App90Handler(BaseHTTPRequestHandler):
                 # Form içindeki form tag'ini kaldırıp sadece içeriği al
                 form_content = form_html.replace("<form method='post' action='/iou' enctype='multipart/form-data'>", "").replace("</form>", "").strip()
 
-                prev_results_encoded = base64.b64encode(previous_results_html.encode("utf-8")).decode("ascii") if previous_results_html else ""
-                # Son kullanılan CSV'leri (joker seçimleriyle beraber) yeniden çalıştırmak için
-                # limit/tolerans ayarını hızlıca değiştirebileceğin ayrı bir form hazırla.
-                rerun_fields: List[str] = []
-                if effective_entries:
-                    idx_rr = 0
-                    for entry in effective_entries:
-                        name_rr = entry.get("filename") or f"file_{idx_rr}.csv"
-                        raw_rr = entry.get("data")
-                        if isinstance(raw_rr, str):
-                            raw_rr = raw_rr.encode("utf-8", errors="replace")
-                        b64_rr = base64.b64encode(raw_rr or b"").decode("ascii")
-                        rerun_fields.append(f"<input type='hidden' name='csv_b64_{idx_rr}' value='{html.escape(b64_rr)}'>")
-                        rerun_fields.append(f"<input type='hidden' name='csv_name_{idx_rr}' value='{html.escape(name_rr)}'>")
-                        if idx_rr in joker_indices:
-                            rerun_fields.append(f"<input type='hidden' name='joker_{idx_rr}' value='1'>")
-                        idx_rr += 1
-                    def _hidden_bool(name: str, enabled: bool) -> str:
-                        return f"<input type='hidden' name='{name}' value='1'>" if enabled else ""
-                    rerun_fields.extend([
-                        f"<input type='hidden' name='sequence' value='{html.escape(sequence)}'>",
-                        f"<input type='hidden' name='input_tz' value='{html.escape(tz_value)}'>",
-                        _hidden_bool("xyz_mode", xyz_enabled),
-                        _hidden_bool("xyz_summary", summary_mode),
-                        _hidden_bool("pattern_mode", pattern_enabled),
-                        "<input type='hidden' name='confirm_iou' value='1'>",
-                    ])
-                    if prev_results_encoded:
-                        rerun_fields.append(
-                            f"<input type='hidden' name='previous_results_html' value='{html.escape(prev_results_encoded)}'>"
-                        )
-                    rerun_fields.append(
-                        f"<input type='hidden' name='previous_pattern_payload' value='{html.escape(pattern_payload_encoded)}'>"
-                    )
-                    rerun_fields_html = "".join(rerun_fields)
-                    rerun_form_section = (
-                        "<div class='card'>"
-                        "<h3>Limit/Toleransı Değiştir ve Yeniden Çalıştır</h3>"
-                        "<form method='post' action='/iou' enctype='multipart/form-data'>"
-                        f"{rerun_fields_html}"
-                        "<div class='row'>"
-                        "<div><label>Limit</label>"
-                        f"<input type='number' step='0.0001' min='0' name='limit' value='{html.escape(str(limit_val))}'></div>"
-                        "<div><label>± Tolerans</label>"
-                        f"<input type='number' step='0.0001' min='0' name='tolerance' value='{html.escape(str(tolerance_val))}'></div>"
-                        "</div>"
-                        "<div style='margin-top:12px;'><button type='submit'>Aynı dosyalarla yeniden çalıştır</button></div>"
-                        "</form>"
-                        "</div>"
-                    )
-                else:
-                    rerun_form_section = ""
-                
                 form_section = (
                     "<hr style='margin:32px 0; border:none; border-top:2px solid #ddd;'>"
                     "<h2 style='margin-top:24px;'>Yeni Analiz</h2>"
@@ -1873,7 +1820,7 @@ class App90Handler(BaseHTTPRequestHandler):
                 )
                 
                 # Final body: önceki sonuçlar + yeni sonuç + form
-                body = body_without_form + rerun_form_section + form_section
+                body = body_without_form + form_section
                 
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
