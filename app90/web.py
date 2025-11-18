@@ -895,6 +895,10 @@ def render_ocprev_form() -> str:
             <label>± Tolerans</label>
             <input type='number' step='0.0001' min='0' value='0.005' name='tolerance' />
           </div>
+          <div style='display:flex; align-items:center; gap:8px;'>
+            <input type='checkbox' name='news_filter' id='news_filter' />
+            <label for='news_filter' style='margin:0;'>Haber filtresi (haberli mumları hariç tut)</label>
+          </div>
         </div>
         <div style='margin-top:12px;'>
           <button type='submit'>Toplamları Hesapla</button>
@@ -903,6 +907,7 @@ def render_ocprev_form() -> str:
     </div>
     <p>PrevOC limiti, |PrevOC| ≥ (limit + tolerans) koşulunu sağlar. Şart sağlandığında OC değeri aynı işaretliyse negatif, zıt işaretliyse pozitif katkıyla toplanır.</p>
     <p>S1 için 1 ve 3, S2 için 1 ve 5 değerleri dahil edilmez; offset aralığı -3..+3 otomatik hesaplanır.</p>
+    <p>Haber filtresi açıksa tatil/all-day dışındaki haberler ve 1 saatlik speech aralığı mumla çakışıyorsa o mumlar toplama dahil edilmez.</p>
     """
 
 
@@ -1180,6 +1185,7 @@ class App90Handler(BaseHTTPRequestHandler):
                 tz_value = (form.get("input_tz", {}).get("value") or "UTC-4").strip()
                 limit_raw = (form.get("limit", {}).get("value") or "0").strip()
                 tol_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
+                news_filter = "news_filter" in form
 
                 try:
                     limit_val = float(limit_raw)
@@ -1222,7 +1228,13 @@ class App90Handler(BaseHTTPRequestHandler):
                         ]
 
                     try:
-                        report = compute_prevoc_sum_report(candles_entry, sequence, limit_val, tolerance_val)
+                        report = compute_prevoc_sum_report(
+                            candles_entry,
+                            sequence,
+                            limit_val,
+                            tolerance_val,
+                            skip_news=news_filter,
+                        )
                     except ValueError as exc:
                         raise ValueError(f"{name}: {exc}")
 
@@ -1237,6 +1249,7 @@ class App90Handler(BaseHTTPRequestHandler):
                         f"<div><strong>Tolerans:</strong> {tolerance_val:.5f}</div>",
                         f"<div><strong>Eşik (|PrevOC|):</strong> {effective_threshold:.5f}</div>",
                         f"<div><strong>Genel toplam:</strong> {format_pip(total_sum)}</div>",
+                        f"<div><strong>Haber filtresi:</strong> {'Açık' if news_filter else 'Kapalı'}</div>",
                     ]
 
                     summary_rows: List[str] = []

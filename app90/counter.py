@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, time as dtime, timedelta
 from typing import List, Optional, Tuple, Dict, Callable
 
+from news_loader import load_news_events
+
 
 MINUTES_PER_STEP = 90
 DEFAULT_START_TOD = dtime(hour=18, minute=0)
@@ -649,6 +651,7 @@ def compute_prevoc_sum_report(
     sequence: str,
     limit: float,
     tolerance: float = IOU_TOLERANCE,
+    skip_news: bool = False,
 ) -> PrevOCReport:
     if not candles:
         raise ValueError("PrevOC analizi için mum verisi gerekli")
@@ -667,6 +670,37 @@ def compute_prevoc_sum_report(
     base_ts = candles[base_idx].ts if 0 <= base_idx < len(candles) else None
     dc_flags = compute_dc_flags(candles)
 
+    news_events = load_news_events() if skip_news else []
+
+    def has_relevant_news(ts: datetime) -> bool:
+        """
+        Haber filtresi: tatil/all-day hariç; speech için 60 dk süre kabul edilip
+        mum aralığıyla kesişim aranır. Normal haberler mum penceresi içinde
+        başlıyorsa dahil sayılır.
+        """
+        if not news_events:
+            return False
+        window_start = ts
+        window_end = ts + timedelta(minutes=MINUTES_PER_STEP)
+        speech_duration = timedelta(hours=1)
+        for ev in news_events:
+            cat = ev.get("category")
+            if cat in {"holiday", "all-day"}:
+                continue
+            start = ev.get("timestamp")
+            if not isinstance(start, datetime):
+                continue
+            if cat == "speech":
+                end = start + speech_duration
+                # Kesişim testi: event penceresi mumla çakışıyor mu?
+                if start < window_end and end > window_start:
+                    return True
+                continue
+            # Normal haberler: başlangıç penceresi içerisine düşüyorsa yeterli
+            if window_start <= start < window_end:
+                return True
+        return False
+
     offsets: List[PrevOCOffsetResult] = []
     for offset in range(-3, 4):
         alignment = compute_offset_alignment(candles, dc_flags, base_idx, seq_values, offset)
@@ -680,6 +714,8 @@ def compute_prevoc_sum_report(
             if idx is None or idx <= 0 or idx >= len(candles):
                 continue
             ts = candles[idx].ts
+            if skip_news and has_relevant_news(ts):
+                continue
             oc = candles[idx].close - candles[idx].open
             prev_oc = candles[idx - 1].close - candles[idx - 1].open
             if not oc or not prev_oc:
