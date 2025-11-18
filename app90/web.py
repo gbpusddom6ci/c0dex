@@ -1371,6 +1371,7 @@ class App90Handler(BaseHTTPRequestHandler):
                     except Exception:
                         previous_results_html = ""
                 pattern_payload_raw = form.get("previous_pattern_payload", {}).get("value", "")
+                rerun_replace = "rerun_replace" in form
                 pattern_groups_history: List[List[List[int]]] = []
                 pattern_meta_history: List[Dict[str, Any]] = []
                 pattern_allow_zero_after_start = True
@@ -1431,6 +1432,11 @@ class App90Handler(BaseHTTPRequestHandler):
                         pattern_meta_history.extend({} for _ in range(len(pattern_groups_history) - len(pattern_meta_history)))
                     elif len(pattern_meta_history) > len(pattern_groups_history):
                         pattern_meta_history = pattern_meta_history[:len(pattern_groups_history)]
+                if rerun_replace:
+                    previous_results_html = ""
+                    pattern_groups_history = []
+                    pattern_meta_history = []
+                    pattern_payload_raw = ""
                 
                 try:
                     limit_val = float(limit_raw)
@@ -1832,6 +1838,7 @@ class App90Handler(BaseHTTPRequestHandler):
                         _hidden_bool("xyz_summary", summary_mode),
                         _hidden_bool("pattern_mode", pattern_enabled),
                         "<input type='hidden' name='confirm_iou' value='1'>",
+                        "<input type='hidden' name='rerun_replace' value='1'>",
                     ])
                     rerun_fields.append(
                         f"<input type='hidden' name='previous_results_html' value='{body_encoded}'>"
