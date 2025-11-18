@@ -1371,7 +1371,6 @@ class App90Handler(BaseHTTPRequestHandler):
                     except Exception:
                         previous_results_html = ""
                 pattern_payload_raw = form.get("previous_pattern_payload", {}).get("value", "")
-                rerun_replace = "rerun_replace" in form
                 pattern_groups_history: List[List[List[int]]] = []
                 pattern_meta_history: List[Dict[str, Any]] = []
                 pattern_allow_zero_after_start = True
@@ -1432,11 +1431,6 @@ class App90Handler(BaseHTTPRequestHandler):
                         pattern_meta_history.extend({} for _ in range(len(pattern_groups_history) - len(pattern_meta_history)))
                     elif len(pattern_meta_history) > len(pattern_groups_history):
                         pattern_meta_history = pattern_meta_history[:len(pattern_groups_history)]
-                if rerun_replace:
-                    previous_results_html = ""
-                    pattern_groups_history = []
-                    pattern_meta_history = []
-                    pattern_payload_raw = ""
                 
                 try:
                     limit_val = float(limit_raw)
@@ -1813,6 +1807,7 @@ class App90Handler(BaseHTTPRequestHandler):
                 # Form içindeki form tag'ini kaldırıp sadece içeriği al
                 form_content = form_html.replace("<form method='post' action='/iou' enctype='multipart/form-data'>", "").replace("</form>", "").strip()
 
+                prev_results_encoded = base64.b64encode(previous_results_html.encode("utf-8")).decode("ascii") if previous_results_html else ""
                 # Son kullanılan CSV'leri (joker seçimleriyle beraber) yeniden çalıştırmak için
                 # limit/tolerans ayarını hızlıca değiştirebileceğin ayrı bir form hazırla.
                 rerun_fields: List[str] = []
@@ -1838,11 +1833,11 @@ class App90Handler(BaseHTTPRequestHandler):
                         _hidden_bool("xyz_summary", summary_mode),
                         _hidden_bool("pattern_mode", pattern_enabled),
                         "<input type='hidden' name='confirm_iou' value='1'>",
-                        "<input type='hidden' name='rerun_replace' value='1'>",
                     ])
-                    rerun_fields.append(
-                        f"<input type='hidden' name='previous_results_html' value='{body_encoded}'>"
-                    )
+                    if prev_results_encoded:
+                        rerun_fields.append(
+                            f"<input type='hidden' name='previous_results_html' value='{html.escape(prev_results_encoded)}'>"
+                        )
                     rerun_fields.append(
                         f"<input type='hidden' name='previous_pattern_payload' value='{html.escape(pattern_payload_encoded)}'>"
                     )
