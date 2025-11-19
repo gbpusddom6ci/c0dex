@@ -60,6 +60,7 @@ def parse_calendar_markdown(
 
         if date_token in WEEKDAY_TOKENS:
             # Malformed block; skip to next token
+            idx = idx + 1
             weekday = date_token
             continue
 
