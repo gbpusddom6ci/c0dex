@@ -66,8 +66,8 @@ Her timeframe klasörü benzer bir kalıbı izler:
 | app72    | 72 dk     | 2172 | 12→72     | 18:00, 19:12, 20:24 DC olamaz; ilk haftanın Cuma 16:48 IOU dışında |
 | app80    | 80 dk     | 2180 | 20→80     | 18:00, 19:20, 20:40 ve tüm Cuma 16:40 DC & IOU dışında |
 | app90    | 90 dk     | 2190 | 30→90     | 18:00 & (Pazar hariç) 19:30 DC/IOU dışı; Cuma 16:30 DC değil; 15:00, 16:30, 16:40 IOU dışı |
-| app96    | 96 dk     | 2196 | 12→96     | 18:00, (Pazar hariç) 19:36 ve Cuma 16:24 DC & IOU dışında |
-| app120   | 120 dk    | 2120 | 60→120    | 18:00 DC & IOU dışında; Pazar hariç 20:00 ve tüm Cuma 16:00 hariç |
+| app96    | 96 dk     | 2196 | 12→96     | 18:00, (Pazar hariç) 19:36 ve Cuma 16:24 DC/IOU dışı; IOU ayrıca her gün 14:48 ve 16:24’ü eler |
+| app120   | 120 dk    | 2120 | 60→120    | 18:00 DC/IOU dışı; Pazar hariç 20:00 DC/IOU dışı; tüm Cuma 16:00 DC/IOU dışı; IOU’da tüm Pazar mumları elenir |
 | app321   | 60 dk     | 2019 | —         | Pazar dışı 20:00 DC olamaz; 18:00/19:00/20:00 IOU dışında |
 | appsuite | —         | 2100 | —         | Tüm uygulamalar reverse proxy arkasında |
 | landing  | —         | 2000 | —         | Kartlar ve hızlı linkler |
@@ -110,11 +110,12 @@ Her IOU taraması aşağıdaki zamanları doğrudan hariç tutar:
 - **app72:** 18:00, 19:12, 20:24 ve iki haftalık verinin ilk haftası Cuma 16:48
 - **app80:** 18:00, 19:20, 20:40 ve tüm Cuma 16:40
 - **app90:** 15:00, 16:30, 16:40 ve 18:00 her gün; (Pazar hariç) 19:30
-- **app96:** 18:00, (Pazar hariç) 19:36 ve Cuma 16:24
-- **app120:** 18:00, Pazar hariç 20:00 ve tüm Cuma 16:00
+- **app96:** 18:00, (Pazar hariç) 19:36 ve Cuma 16:24; IOU ayrıca her gün 14:48 ve 16:24’ü dışlar
+- **app120:** 18:00, Pazar hariç 20:00 ve tüm Cuma 16:00; IOU’da tüm Pazar mumları ve her gün 16:00 slotu elenir
 - **app321:** 18:00, 19:00, 20:00
 
 IOU filtresi `limit` ve opsiyonel `± tolerance` kullanır; bir satırın sayılabilmesi için hem `|OC|` hem `|PrevOC|` değerlerinin `limit + tolerance` eşiğini aşması gerekir.
+Not (web farkı): Web IOU sayfalarında XYZ elemesi `|OC| > eşik` veya `|PrevOC| > eşik` (OR ve `>`) mantığıyla uygulanır; çekirdek kural `AND` ve `≥` olarak tasarlanmıştır.
 
 ---
 
@@ -148,8 +149,14 @@ Tüm IOU sekmeleri `economic_calendar/` altındaki JSON takvimleri `news_loader.
 - `holiday` ve `all-day` yalnız bilgilendirme amaçlıdır; XYZ filtresi bu kayıtları haber kabul etmez ve bu kategorileri içeren hit’ler offseti kümenin dışına iter.
 - `recent_null=true` olan kayıtlar `(null)` ekiyle gösterilir.
 - app72’de 16:48/18:00/19:12/20:24 özel slotları, haber olmasa da korunur.
+- IOU akışı app120/app321 (aynı mantıkla diğer IOU sekmeleri) için iki aşamalıdır: önce Joker seçimi ekranı gelir, ardından sonuçlar aynı sayfada birikmeli (“stacked”) olarak üst üste eklenir; önceki analizler base64 saklanır.
 
 XYZ filtresi, haber bulunmayan (ve slotla korunmayan) offset’leri eler; holiday / all-day satırlar yalnızca bilgi olarak görünür ve offset’i filtre dışına çıkarır.
+
+## Örüntüleme ve Upload Sınırları
+- app48 web’inde beam=512 ve en fazla 1000 örüntü sınırı korunur; app72/80/90/96/120’de örüntü sınırları kaldırılmıştır (None).
+- `allow_zero_after_start` parametresi (özellikle app120 IOU formunda) ilk adım ±1/±3 sonrası 0’a izin verip vermeyeceğini belirler.
+- Multi-upload limitleri: app48/72/80/90/96/120 IOU formları 50 dosyaya kadar; app321 IOU ve `calendar_md` dönüştürücü 25 dosyayla sınırlıdır; appsuite toplam yük boyutunu 50 MB ile sınırlar.
 
 ---
 

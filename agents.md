@@ -9,7 +9,7 @@ Bu dosya, repodaki bütün uygulamaların ve ortak altyapının gerçeğe uygun,
 - Dil/çatı: Python 3.11+. Standart kütüphane ağırlıklı; web katmanları `http.server` tabanlı. Üretim için yalnız `gunicorn` (requirements.txt).
 - Uygulamalar: app48, app72, app80, app90, app96, app120, app321 (her biri CLI + web). Ek: appsuite (reverse proxy), landing (tanıtım), calendar_md (takvim dönüştürücü), favicon (varlıklar), news_loader (haber motoru).
 - IOU/IOV sinyalleri: Dizi (S1/S2), offset hizalama, DC istisnaları ve limit/tolerans eşikleriyle üretilir. “XYZ (haber filtreli)” opsiyonu vardır.
-- Örüntüleme (Pattern): Tüm IOU sayfalarında Joker desteği, tooltip ve beam=512; en fazla 1000 örüntü listelenir.
+- Örüntüleme (Pattern): Tüm IOU sayfalarında Joker desteği, tooltip; app48’te beam=512 ve max 1000 sınırı, app72/80/90/96/120’de sınırlar kaldırıldı.
 - Stacked analysis: IOU sonuçları aynı sayfada birikmeli tutulur (app120’de yalnız IOU). 
 
 
@@ -89,7 +89,7 @@ Hafta Sonu Kapanış/Açılış (tahmin):
 - app80: 15:20, 16:40 ve 18:00 IOU değildir; 19:20 ve 20:40 yalnız Pazar günleri serbesttir; Cuma 16:40 ayrıca IOU dışıdır.
 - app90: 15:00, 16:30, 16:40 ve 18:00 IOU değildir; (Pazar hariç) 19:30 da IOU vermez.
 - app96: 14:48, 16:24 ve 18:00 IOU değildir; (Pazar hariç) 19:36 kısıtı sürer; Cuma 16:24 zaten IOU dışıdır.
-- app120: 16:00 ve 18:00 IOU değildir; 20:00 tüm günlerde IOU vermez (Pazar dahil).
+- app120: 16:00 ve 18:00 IOU değildir; 20:00 tüm günlerde IOU vermez (Pazar dahil) ve tüm Pazar mumları IOU dışıdır.
 
 ### 3.8 XYZ (Haber Filtreli) Kümesi
 - IOU formlarında “XYZ kümesi (haber filtreli)” seçeneği ile, etkili haberi olmayan hit’lerin offsetleri elenir.
@@ -115,7 +115,7 @@ Not (spesifikasyon ↔ web farkı): Web IOU sayfalarında XYZ elemesi şu an “
   - Arka arkaya aynı değer olamaz; işaret üçlü içinde sabittir; tüm dosyalar kronolojide tüketilir (atlama yok).
 - Joker: Joker işaretli dosyanın XYZ kümesi tüm offsetleri (-3..+3) kapsar.
 - Görsellik: Her offset üstüne gelince kaynak dosya adı tooltip olarak görünür; Joker’ler “(Joker)” etiketi alır. Aynı üçlünün (0’sız) birden fazla tekrar ettiği örüntülerde blok arka planları renklendirilir.
-- Performans: beam=512; en fazla 1000 örüntü listelenir.
+- Performans: app48’te beam=512 ve en fazla 1000 örüntü; app72/80/90/96/120’de sınırlar kaldırılmıştır.
 
 ### 3.10 Stacked Analysis (IOU)
 - Tüm IOU sayfalarında yeni analizler “Analiz #YYYYMMDD_HHMMSS” başlığıyla üstte birikir; form sayfa altında yeniden render edilir.
@@ -163,7 +163,7 @@ Her uygulama tipik olarak şu modüllere sahiptir: `counter.py` (sayım + sinyal
 ### 4.6 app120 (120m)
 - Port: 2120. Sekmeler: Analiz, DC List, Matrix, IOV Tarama, IOU Tarama, 60→120 Converter.
 - DC istisnaları: 18:00 DC değildir; (Pazar hariç) 20:00 DC olamaz; Cuma 16:00 DC sayılmaz.
-- IOU kısıtları: 16:00 ve 18:00 her gün dışlanır; 20:00 tüm günlerde IOU değildir (Pazar dahil).
+- IOU kısıtları: 16:00 ve 18:00 her gün dışlanır; 20:00 tüm günlerde IOU değildir (Pazar dahil); tüm Pazar mumları IOU dışıdır.
 - IOV: Zıt işaretli, eşik üstü çiftler. IOU: Aynı işaretli, `limit + tolerans` ≥ eşik. Limit negatifse abs alınır.
 - IOU: Çoklu CSV, XYZ, örüntüleme + Joker, stacked (IOV klasik).
 - IOU örüntü zinciri: ardışık taramalarda `Toplu örüntüler` paneli (app72 mantığı) sonuçları beginning offset’e göre gruplayıp Joker/dosya meta bilgisini korur. Ayrıntılar için `app72_pattern_chaining.md`.
@@ -186,7 +186,7 @@ Her uygulama tipik olarak şu modüllere sahiptir: `counter.py` (sayım + sinyal
 - Arka uçlar ayrı thread’lerde başlar; health: `/health` → `ok`.
 - HTML’de `href` ve `action` yolları proxy prefix’ine göre rewrite edilir.
 - Güvenlik başlıkları: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Content-Security-Policy` (inline stil izinli) gönderilir.
-- Maksimum upload: 50 MB; çoklu dosya sayısı: 50.
+- Maksimum upload: 50 MB; çoklu dosya sayısı: 50 (app321 IOU ve calendar_md için 25 dosya sınırı).
 
 ### 5.3 calendar_md ve news_loader
 - calendar_md web: `python3 -m calendar_md.web --port 2300` — çoklu `.md` yükler, her biri için JSON üretir (çoklu ise ZIP). CLI: `python3 -m calendar_md --input takvim.md --output out.json --year 2025`.
@@ -211,7 +211,7 @@ Her uygulama tipik olarak şu modüllere sahiptir: `counter.py` (sayım + sinyal
 - app48 `/convert` rotası diğerlerinden farklıdır (diğerleri `/converter`).
 - XYZ filtresi spec↔web farkı (OR ve `>` vs AND ve `≥`) bilerek belgelenmiş bir sapmadır.
 - Güvenlik başlıkları tüm web katmanlarında set edilir; inline CSS tooltipler için CSP’de `unsafe-inline` stil izni vardır.
-- Maksimum yükleme büyüklükleri ve dosya sayıları UI’da ve appsuite içinde sınırlandırılmıştır (50MB/50).
+- Maksimum yükleme büyüklükleri ve dosya sayıları UI’da ve appsuite içinde sınırlandırılmıştır (50MB/50; app321 IOU ve calendar_md 25 dosya).
 
 
 ## 8) Sorun Giderme ve İpuçları
