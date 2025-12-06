@@ -30,6 +30,15 @@ class Candle:
 SEQUENCES: Dict[str, List[int]] = {
     "S1": [1, 3, 7, 13, 21, 31, 43, 57, 73, 91, 111, 133, 157],
     "S2": [1, 5, 9, 17, 25, 37, 49, 65, 81, 101, 121, 145, 169],
+    "S3": [1, 4, 8, 15, 23, 34, 46, 61, 77, 96, 116, 139, 163, 190, 218],
+    "S4": [1, 2, 6, 11, 19, 28, 40, 53, 69, 86, 106, 127, 151, 176, 204],
+}
+
+SKIP_VALUES: Dict[str, Set[int]] = {
+    "S1": {1, 3},
+    "S2": {1, 5},
+    "S3": {1, 4},
+    "S4": {1, 2},
 }
 
 
@@ -575,7 +584,7 @@ def _detect_signal_candles(
     if seq_key not in SEQUENCES:
         seq_key = "S2"
     seq_values = SEQUENCES[seq_key][:]
-    skip_values = {1, 3} if seq_key == "S1" else {1, 5}
+    skip_values = SKIP_VALUES.get(seq_key, {1, 5})
     threshold = abs(limit)
     tol = abs(tolerance or 0.0)
     effective_threshold = threshold + tol
@@ -741,7 +750,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         description="120m sayımı (gap yok) ve DC istisnası yok",
     )
     p.add_argument("--csv", required=True, help="CSV dosya yolu")
-    p.add_argument("--sequence", choices=list(SEQUENCES.keys()), default="S2", help="Kullanılacak dizi: S1 veya S2")
+    p.add_argument("--sequence", choices=list(SEQUENCES.keys()), default="S2", help="Kullanılacak dizi: S1/S2/S3/S4")
     p.add_argument("--offset", type=int, choices=[-3, -2, -1, 0, 1, 2, 3], default=0, help="Başlangıç ofseti (-3..+3)")
     p.add_argument("--show-dc", action="store_true", help="Çıktıda DC bilgisini göster")
     p.add_argument("--predict", type=int, default=None, help="Belirli dizi değerinin (örn. 37) tahmini zamanı")

@@ -763,6 +763,8 @@ def render_analyze_index() -> bytes:
             <select name='sequence'>
               <option value='S1' selected>S1</option>
               <option value='S2'>S2</option>
+              <option value='S3'>S3</option>
+              <option value='S4'>S4</option>
             </select>
           </div>
           <div>
@@ -850,6 +852,8 @@ def render_matrix_index() -> bytes:
             <select name='sequence'>
               <option value='S1' selected>S1</option>
               <option value='S2'>S2</option>
+              <option value='S3'>S3</option>
+              <option value='S4'>S4</option>
             </select>
           </div>
         </div>
@@ -887,6 +891,8 @@ def render_iov_index() -> bytes:
             <select name='sequence'>
               <option value='S1' selected>S1</option>
               <option value='S2'>S2</option>
+              <option value='S3'>S3</option>
+              <option value='S4'>S4</option>
             </select>
           </div>
           <div>
@@ -930,6 +936,8 @@ def render_iou_form() -> str:
             <select name='sequence'>
               <option value='S1' selected>S1</option>
               <option value='S2'>S2</option>
+              <option value='S3'>S3</option>
+              <option value='S4'>S4</option>
             </select>
           </div>
           <div>

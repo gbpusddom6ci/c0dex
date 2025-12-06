@@ -7,7 +7,7 @@ Bu dosya, repodaki tüm uygulamaların ve ortak altyapının güncel, tekil refe
 - Zaman dilimi: Çıktı bakışı UTC-4. Web arayüzleri ve tüm dönüştürücülerde `input_tz` seçimiyle UTC-5 giriş +1 saat kaydırılır; CLI counter’lar UTC-4 kabul eder (yalnız app48 counter `--input-tz` alır).
 - Dil/çatı: Python 3.11+, standart kütüphane + `http.server`. Üretimde sadece `gunicorn`.
 - Uygulamalar: app48, app72, app80, app90, app96, app120, app321 (her biri CLI + web). Ek: appsuite (reverse proxy), landing (tanıtım), calendar_md (takvim dönüştürücü), favicon (varlıklar), news_loader (haber motoru).
-- IOU/IOV: S1/S2 dizileri, offset hizalama, DC istisnaları, limit+tolerans mantığı, XYZ (haber) filtresi, örüntüleme + Joker, stacked sonuçlar. app120’de IOV ayrı sekme.
+- IOU/IOV: S1/S2/S3/S4 dizileri, offset hizalama, DC istisnaları, limit+tolerans mantığı, XYZ (haber) filtresi, örüntüleme + Joker, stacked sonuçlar. app120’de IOV ayrı sekme.
 - Yeni/özel: app90’da OC/PrevOC toplama sekmesi (haber filtresi opsiyonel). app72 ve app120 IOU’da örüntü zinciri geçmişi korunur. Tüm dönüştürücüler çoklu dosyayı destekler, birden fazlaysa ZIP indirir.
 - Upload limitleri: Web formları ve appsuite 50 MB; dosya sayısı 50 (app321 IOU ve calendar_md 25). Güvenlik başlıkları her yerde set edilir.
 
@@ -34,6 +34,8 @@ Bu dosya, repodaki tüm uygulamaların ve ortak altyapının güncel, tekil refe
 ### 3.3 Diziler (Sequences)
 - S1: `1, 3, 7, 13, 21, 31, 43, 57, 73, 91, 111, 133, 157`
 - S2: `1, 5, 9, 17, 25, 37, 49, 65, 81, 101, 121, 145, 169`
+- S3: `1, 4, 8, 15, 23, 34, 46, 61, 77, 96, 116, 139, 163, 190, 218`
+- S4: `1, 2, 6, 11, 19, 28, 40, 53, 69, 86, 106, 127, 151, 176, 204`
 
 ### 3.4 Distorted Candle (DC)
 - Tanım: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` önceki mumun `[Open, Close]` aralığında ise DC kabul edilir; ardışık DC engellenir.
@@ -69,7 +71,7 @@ Bu dosya, repodaki tüm uygulamaların ve ortak altyapının güncel, tekil refe
 - Limit=0: IOU’da pratik eşik toleranstır (vars 0.005); IOV’da 0.
 
 ### 3.9 Dizi “Skip” Kuralı
-- IOU/IOV taramalarında S1 için 1 ve 3; S2 için 1 ve 5 sinyal dışıdır.
+- IOU/IOV taramalarında S1 için 1 ve 3; S2 için 1 ve 5; S3 için 1 ve 4; S4 için 1 ve 2 sinyal dışıdır.
 
 ### 3.10 IOU Zaman Kısıtları
 - app321: 18:00, 19:00, 20:00 IOU değildir.
