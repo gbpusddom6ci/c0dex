@@ -1,225 +1,205 @@
 # AGENTS.md — Proje Rehberi (Geliştirici + Yapay Zekâ Ajanı)
 
-Bu dosya, repodaki bütün uygulamaların ve ortak altyapının gerçeğe uygun, tek kaynaktan anlaşılmasını sağlar. Amaç, yeni devralan geliştiricilerin ve yapay zekâ ajanlarının başka hiçbir kaynağa ihtiyaç duymadan projeye hâkim olabilmesidir.
-
+Bu dosya, repodaki tüm uygulamaların ve ortak altyapının güncel, tekil referansıdır. Amaç, yeni geliştirici veya yapay zekâ ajanlarının başka kaynağa ihtiyaç duymadan projeye hâkim olmasıdır.
 
 ## 1) Hızlı Bakış
 
-- Zaman dilimi: Tüm çıktı UTC-4. Girdi UTC-5 seçilirse +1 saat kaydırılır (normalize edilir).
-- Dil/çatı: Python 3.11+. Standart kütüphane ağırlıklı; web katmanları `http.server` tabanlı. Üretim için yalnız `gunicorn` (requirements.txt).
+- Zaman dilimi: Çıktı bakışı UTC-4. Web arayüzleri ve tüm dönüştürücülerde `input_tz` seçimiyle UTC-5 giriş +1 saat kaydırılır; CLI counter’lar UTC-4 kabul eder (yalnız app48 counter `--input-tz` alır).
+- Dil/çatı: Python 3.11+, standart kütüphane + `http.server`. Üretimde sadece `gunicorn`.
 - Uygulamalar: app48, app72, app80, app90, app96, app120, app321 (her biri CLI + web). Ek: appsuite (reverse proxy), landing (tanıtım), calendar_md (takvim dönüştürücü), favicon (varlıklar), news_loader (haber motoru).
-- IOU/IOV sinyalleri: Dizi (S1/S2), offset hizalama, DC istisnaları ve limit/tolerans eşikleriyle üretilir. “XYZ (haber filtreli)” opsiyonu vardır.
-- Örüntüleme (Pattern): Tüm IOU sayfalarında Joker desteği, tooltip; app48’te beam=512 ve max 1000 sınırı, app72/80/90/96/120’de sınırlar kaldırıldı.
-- Stacked analysis: IOU sonuçları aynı sayfada birikmeli tutulur (app120’de yalnız IOU). 
-
+- IOU/IOV: S1/S2 dizileri, offset hizalama, DC istisnaları, limit+tolerans mantığı, XYZ (haber) filtresi, örüntüleme + Joker, stacked sonuçlar. app120’de IOV ayrı sekme.
+- Yeni/özel: app90’da OC/PrevOC toplama sekmesi (haber filtresi opsiyonel). app72 ve app120 IOU’da örüntü zinciri geçmişi korunur. Tüm dönüştürücüler çoklu dosyayı destekler, birden fazlaysa ZIP indirir.
+- Upload limitleri: Web formları ve appsuite 50 MB; dosya sayısı 50 (app321 IOU ve calendar_md 25). Güvenlik başlıkları her yerde set edilir.
 
 ## 2) Dizin Yapısı ve Bileşenler
 
 - `app48/`, `app72/`, `app80/`, `app90/`, `app96/`, `app120/`, `app321/` — Timeframe uygulamaları (CLI + web)
 - `appsuite/` — Tüm web uygulamalarını tek host altında farklı path’lerle proxy’ler
-- `landing/` — Basit landing sayfası (uygulama linkleri)
-- `calendar_md/` — ForexFactory benzeri markdown takvimlerini JSON’a dönüştürür (CLI + web)
-- `economic_calendar/` — Örnek takvim JSON dosyaları (haber entegrasyonu için)
-- `favicon/` — Favicon ve manifest varlıkları + ortak `<head>` linkleri
-- Kök: `Dockerfile`, `Procfile`, `render.yaml`, `railway.toml`, `.python-version`
-
+- `landing/` — Landing sayfası (uygulama linkleri, görsel varlıklar için `photos/`)
+- `calendar_md/` — ForexFactory tarzı markdown takvimlerini JSON’a dönüştürür (CLI + web)
+- `economic_calendar/` — Haber JSON örnekleri (news_loader için; kök dizindeki JSON’lar da taranır)
+- `favicon/` — Favicon ve manifest varlıkları + `<head>` linkleri
+- Kök: `Dockerfile`, `Procfile`, `render.yaml`, `railway.toml`, `.python-version`, yardımcı md/csv örnekleri
 
 ## 3) Ortak Kavramlar ve Kurallar
 
-### 3.1 CSV Girdisi
-- Gerekli başlıklar: `Time`, `Open`, `High`, `Low`, `Close (Last)` (eş anlamlı başlık adları kodda desteklenir).
-- Satırlar timestamp’e göre sıralanır; bozuk satırlar atlanır.
-- Girdi TZ: `UTC-4` veya `UTC-5`. `UTC-5` seçilirse tüm zaman damgaları +60 dk kaydırılır ve çıktı UTC-4’e normalize edilir.
+### 3.1 Zaman Dilimi & Upload
+- Web ve dönüştürücülerde `input_tz` UTC-5 seçilirse tüm timestamp’ler +1h kaydırılıp çıktıda UTC-4 normalize edilir. Counter CLI’lar (app48 hariç) verinin zaten UTC-4 olduğuna inanır.
+- Maksimum yük: 50 MB. Dosya sınırı: 50; app321 IOU ve calendar_md 25. Birden fazla çıktı varsa ZIP paketlenir, dosya adları sanitize edilir ve benzersizlenir.
 
-### 3.2 Diziler (Sequences)
+### 3.2 CSV Girdisi
+- Gerekli başlıklar: `Time`, `Open`, `High`, `Low`, `Close (Last)` (eş anlamlı başlıklar desteklenir).
+- Satırlar timestamp’e göre sıralanır; hatalı/boş satırlar atlanır.
+
+### 3.3 Diziler (Sequences)
 - S1: `1, 3, 7, 13, 21, 31, 43, 57, 73, 91, 111, 133, 157`
 - S2: `1, 5, 9, 17, 25, 37, 49, 65, 81, 101, 121, 145, 169`
 
-### 3.3 Distorted Candle (DC)
-- Tanım: `High ≤ prev.High`, `Low ≥ prev.Low` ve `Close` önceki mumun `[Open, Close]` aralığında ise DC kabul edilir.
-- Ardışık DC engeli: Aynı anda iki DC olamaz (ardışık DC false’a çekilir).
-- Varsayılan: 18:00 mumu asla DC sayılmaz (uygulama istisnaları ayrıca geçerli).
+### 3.4 Distorted Candle (DC)
+- Tanım: `High ≤ prev.High`, `Low ≥ prev.Low`, `Close` önceki mumun `[Open, Close]` aralığında ise DC kabul edilir; ardışık DC engellenir.
+- Varsayılan: 18:00 DC sayılmaz; uygulama istisnaları aşağıda.
+- DC istisnaları:
+  - app321 (60m): 13:00–20:00 DC’ler normal kabul; 20:00 (Pazar hariç) DC olamaz.
+  - app48 (48m): 13:12–19:36 arası DC’ler normal kabul.
+  - app72 (72m): 18:00; Cuma 16:48; (Pazar hariç) 19:12, 20:24; Cuma 16:00 DC olamaz (hafta kapanış boşluğu kontrolü mevcut).
+  - app80 (80m): (Pazar hariç) 18:00, 19:20, 20:40 DC olamaz; Cuma 16:40 DC değildir; hafta sonu boşluğu varsa 16:40 mumları kapanış olarak DC dışıdır.
+  - app90 (90m): 18:00; (Pazar hariç) 19:30; Cuma 16:30 DC olamaz.
+  - app96 (96m): 18:00; (Pazar hariç) 19:36; Cuma 16:24 DC olamaz.
+  - app120 (120m): 18:00 DC değildir; (Pazar hariç) 20:00 DC olamaz; Cuma 16:00 DC sayılmaz (hafta kapanışı).
+- Kapsayıcı kural: Dizi adımı DC’ye denk gelirse timestamp DC mumuna yazılır. +Offset başlangıçlarında DC varsa “normal mum” gibi sayılır.
 
-DC İstisnaları (uygulamaya özel):
-- app321 (60m): 13:00–20:00 arası DC’ler normal kabul; 20:00 (Pazar hariç) DC olamaz.
-- app48 (48m): 13:12–19:36 (19:36 dahil) arası DC’ler normal kabul edilir.
-- app72 (72m): 18:00; Cuma 16:48; (Pazar hariç) 19:12, 20:24; Cuma 16:00 DC olamaz.
-- app80 (80m): (Pazar hariç) 18:00, 19:20, 20:40; Cuma 16:40 DC olamaz.
-- app90 (90m): 18:00; (Pazar hariç) 19:30; Cuma 16:30 DC olamaz.
-- app96 (96m): 18:00; (Pazar hariç) 19:36; Cuma 16:24 DC olamaz.
-- app120 (120m): 18:00 DC değildir; (Pazar hariç) 20:00 DC olamaz; Cuma 16:00 DC sayılmaz (hafta kapanışı).
+### 3.5 Offset Sistemi ve Hizalama
+- Başlangıç: Veri setindeki ilk 18:00 mumu. Offset aralığı `-3..+3`, hedef zaman = offset × timeframe dakikası.
+- Pozitif offset: Başlangıç noktası DC olmayan ilk muma kaydırılır; eksik veri varsa `missing_steps` hesaplanır ve tahmini zaman (`pred`) yazılır.
+- Negatif offset: Hedef zaman doğrudan kullanılır; DC olsa da geri arama yapılmaz.
+- Matrix görünümleri tüm offsetleri tek tabloda gösterir, bulunamayan yerler `pred` ile doldurulur.
 
-Kapsayıcı Kural: Dizi hücresi bir DC’ye denk gelirse zaman damgası o DC mumuna yazılır.
+### 3.6 Hafta Sonu ve Tahmin
+- Tahmin motoru: app72/app80/app120 hafta sonu kapanışını Pazar 18:00’a sıçrayarak hesaplar; app48/app90/app96/app321 doğrusal dakika ekler.
+- Counter CLI’larda `--predict` ve `--predict-next` desteklenir (app48 hariç). Web analiz tablolarında veri dışı satırlar “pred” olarak işaretlenir.
 
-Pozitif Offset DC İstisnası: +1, +2, +3 başlangıç adımlarında başlangıç mumu DC ise “normal mum” gibi sayılır (pozitif offsette DC kısıtı uygulanmaz).
+### 3.7 OC / PrevOC ve app90 PrevOC Toplamı
+- OC: `Close - Open`; PrevOC: önceki mumun OC’si. Tahmini satırlarda `OC=- PrevOC=-`.
+- app90 `OC/PrevOC` sekmesi: `|PrevOC| ≥ (limit + tolerans)` sağlayan hücreler katkı hesaplar. OC ve PrevOC aynı işaretliyse katkı `-abs(OC)`, zıt işaretliyse `+abs(OC)`; offset başına toplam, pozitif/negatif adetleri raporlanır. Haber filtresi açıksa ilgili haber penceresine denk gelen katkılar atlanır (speech 60 dk pencere, holiday/all-day hariç).
 
-### 3.4 Offset Sistemi ve Hizalama
-- Başlangıç: İlk yakalanan 18:00 mumu.
-- Offset aralığı: `-3..+3`, hedef zaman = offset × timeframe dakikası.
-- Pozitif offsetlerde “DC olmayan sonraki mum” mantığı ile kaydırma yapılır; veri yoksa `missing_steps` raporlanır ve tahmini zaman (`pred`) üretilir.
-- Matrix görünümlerinde tüm offset sütunları tek tabloda listelenir.
+### 3.8 IOU/IOV Eşik Mantığı
+- Limit mutlak değerdir; negatif girilirse abs alınır.
+- IOU: Etkin eşik `limit + tolerans`; `abs(OC)` ve `abs(PrevOC)` bu eşiğin altında ise elenir; işaret aynı olmalı.
+- IOV (app120): Tolerans 0, eşik yalnız limit; işaretler zıt olmalı.
+- Limit=0: IOU’da pratik eşik toleranstır (vars 0.005); IOV’da 0.
 
-Pozitif vs Negatif Offsetlerde DC Kaydırma:
-- Pozitif (+1/+2/+3): Başlangıç noktası seçilirken DC mumlar atlanır ve ilk “DC olmayan gerçek” muma kaydırılır. Böylece +offset sütunları DC’ye kilitlenmez ve çakışmalar azalır (ör. 20:00 DC ise +1 başlangıcı 22:00; 22:00 da DC ise 00:00).
-- Negatif (-1/-2/-3): Hedef zaman doğrudan kullanılır (ör. -1 → 16:00). Hedef mum DC olsa bile geri doğru “bir sonraki DC olmayan mumu bul” araması yapılmaz; 16:00 DC ise başlangıç yine 16:00 kabul edilir.
-- Kapsam notu: “Kapsayıcı kural” her iki yönde de geçerlidir; dizi adımı DC’ye denk gelirse o DC’nin timestamp’i yazılır. 0 offset zaten 18:00’dır ve uygulama kuralları gereği DC sayılmadığından ek işleme gerek yoktur.
+### 3.9 Dizi “Skip” Kuralı
+- IOU/IOV taramalarında S1 için 1 ve 3; S2 için 1 ve 5 sinyal dışıdır.
 
-Hafta Sonu Kapanış/Açılış (tahmin):
-- app72, app80, app120: Cuma kapanışından sonra tahminler Pazar 18:00’a atlar.
-- app48, app90, app96, app321: Doğrusal adımla dakika eklenir (özel hafta sonu sıçraması yok).
+### 3.10 IOU Zaman Kısıtları
+- app321: 18:00, 19:00, 20:00 IOU değildir.
+- app48: 18:00, 18:48, 19:36 IOU değildir.
+- app72: 15:36, 16:48 her gün IOU dışı; 18:00, 19:12, 20:24 yalnız ikinci Pazar serbest; ilk haftanın Cuma 16:48’i IOU vermez.
+- app80: 15:20, 16:40, 18:00 IOU dışı; 19:20/20:40 yalnız Pazar günleri IOU olabilir; Cuma 16:40 IOU vermez.
+- app90: 15:00, 16:30, 16:40, 18:00 IOU dışı; (Pazar hariç) 19:30 IOU vermez.
+- app96: 14:48, 16:24, 18:00 IOU dışı; (Pazar hariç) 19:36 IOU vermez.
+- app120: 16:00 ve 18:00 IOU değildir; 20:00 tüm günlerde IOU vermez; tüm Pazar mumları IOU dışıdır.
 
-### 3.5 OC / PrevOC
-- OC: `Close - Open` (her gerçek mum için `±5` hane ile gösterilir).
-- PrevOC: Bir önceki mumun OC değeri; yoksa `-`.
-- Tahmini satırlarda `OC=- PrevOC=-` yazılır.
+### 3.11 XYZ (Haber Filtreli) Kümesi
+- Haber kaynağı: `news_loader.py` `economic_calendar/*.json` (kök JSON’lar da taranır); `time_24h` yoksa `time`/`time_text`/`time_label`/`session` denenir. Kategoriler: `holiday`, `all-day`, `speech`, `normal`.
+- Hücre etiketi: `Var`, `Holiday`, `AllDay`, `Yok`. `recent-null` penceresi 60 dk.
+- app72 slot koruması: Haber listesi boşsa 16:48, 18:00, 19:12, 20:24 offsetleri “Kural slot HH:MM” notuyla korunur (holiday/all-day gelirse kalkar).
+- Web IOU’da eleme OR ve `>` ile çalışır (haber yoksa ve `|OC| >` ya da `|PrevOC| >` limit+tolerans), teorik çekirdek AND ve `≥` olarak dokümanlanmış sapma.
 
-### 3.6 IOU/IOV Eşik Mantığı
-- Limit mutlak değerdir; negatif girilirse `abs(limit)` alınır.
-- IOU: Etkin eşik `limit + tolerans` ve karşılaştırma “≥”. Kodda `abs(x) < (limit+tolerans)` ise eleme yapılır.
-- IOV: Tolerans 0 kabul edilir (yalnız limit uygulanır).
-- Limit=0 davranışı:
-  - IOU: Eşik = `tolerans` (varsayılan 0.005). Her iki mutlak değer de bu eşiği aşmalıdır.
-  - IOV: Eşik = 0; işaret koşulu sıfır OC’ları pratikte dışarıda bırakır.
-- Dizi “skip” kuralı (IOU/IOV için ortak): S1’de `1` ve `3`; S2’de `1` ve `5` sinyal dışıdır.
+### 3.12 Örüntüleme (Pattern) ve Joker
+- Tüm IOU sayfalarında örüntüleme seçeneği; Joker işaretli dosya XYZ kümesinde tüm offsetleri (-3..+3) kapsar.
+- Kurallar: Başlangıç serbest; üçlü 1–2–3 veya 3–2–1 aynı işaretle tamamlanır; üçlü bitmeden 0 gelmez; ±2 ile başlanırsa 1/3 (aynı işaret) gelir; arka arkaya aynı değer yasak; ilk adım ±1/±3 ise ikinci adımda 0’a izin verilir.
+- Görsellik: Tooltip’te dosya adı + “(Joker)”; tekrarlayan üçlü blokları renklendirilir.
+- Performans: app48 beam=512, max 1000 örüntü; diğerlerinde sınır yok.
 
-### 3.7 IOU Zaman Kısıtları (Sinyal Olamayan Saatler)
-- app321: 18:00, 19:00, 20:00 IOU olamaz.
-- app48: 18:00, 18:48, 19:36 IOU olamaz.
-- app72: 15:36 ve 16:48 mumları her gün IOU değildir; 18:00, 19:12, 20:24 kısıtı ise “ikinci Pazar” gününde serbesttir. İlk haftanın Cuma 16:48 mumu ayrıca IOU dışıdır.
-- app80: 15:20, 16:40 ve 18:00 IOU değildir; 19:20 ve 20:40 yalnız Pazar günleri serbesttir; Cuma 16:40 ayrıca IOU dışıdır.
-- app90: 15:00, 16:30, 16:40 ve 18:00 IOU değildir; (Pazar hariç) 19:30 da IOU vermez.
-- app96: 14:48, 16:24 ve 18:00 IOU değildir; (Pazar hariç) 19:36 kısıtı sürer; Cuma 16:24 zaten IOU dışıdır.
-- app120: 16:00 ve 18:00 IOU değildir; 20:00 tüm günlerde IOU vermez (Pazar dahil) ve tüm Pazar mumları IOU dışıdır.
-
-### 3.8 XYZ (Haber Filtreli) Kümesi
-- IOU formlarında “XYZ kümesi (haber filtreli)” seçeneği ile, etkili haberi olmayan hit’lerin offsetleri elenir.
-- Haber kaynağı: `news_loader.py` JSON’ları yükler; `time_24h` yoksa `time`/`time_text`/`time_label`/`session` denenir. Kayıtlar kategorize edilir:
-  - `holiday` (tatil), `all-day` (gün boyu), `speech` (saati belli olup değerleri null), `normal`.
-- Hücre etiketi: `Var`, `Holiday`, `AllDay` veya `Yok`. `Holiday` ve bilgi amaçlı satırlar haber sayılmaz.
-- “Recent-null” penceresi: Son `null_back_minutes=60` dakikada “actual=null” olan kayıtlar da listelenir.
-- app72 özel slot koruması (XYZ): Haber listesi boşsa 16:48, 18:00, 19:12, 20:24 slotları “Kural slot HH:MM” notuyla korunur; tatil/all-day gibi bilgi satırları geldiğinde bu koruma devreden çıkar.
-- Eşik entegrasyonu: XYZ hesabında da `|OC|` ve `|PrevOC| ≥ (limit + tolerans)` koşulu aranır.
-
-Özet tablo (yalnız XYZ kümesi):
-- IOU formlarındaki “Özet tablo” seçeneği açıkken ayrıntılı hit tabloları yerine dosya başına yalnız XYZ kümesi ve elenen offsetlerin nedenleri özet bir tabloda gösterilir. Örüntüleme açıksa, bu modda da örüntü paneli eklenmeye devam eder.
-
-Not (spesifikasyon ↔ web farkı): Web IOU sayfalarında XYZ elemesi şu an “OR” ve “>” ile çalışır (haber yoksa ve `|OC| > eşiği` veya `|PrevOC| > eşiği` ise offset elenir). Teorik çekirdek kural “AND” ve “≥”dir. Bu fark bilinçli şekilde belgelenmiştir.
-
-### 3.9 Örüntüleme (Pattern) ve Joker
-- Tüm IOU sayfalarında “Örüntüleme” seçeneği ile dosya bazlı XYZ kümelerinden kurallı diziler üretilir.
-- Kurallar:
-  - Başlangıç serbest: 0 veya ±1/±2/±3. Her 0’dan sonra yeni üçlü yalnız ±1 veya ±3 ile başlar.
-  - Üçlü: Aynı işaretle 1–2–3 (yükselen) veya 3–2–1 (azalan) tamamlanır; üçlü bitmeden 0 alınamaz.
-  - İlk adım ±1/±3 ise ikinci adımda 0’a izin verilir (otomatik).
-  - ±2 ile başlanırsa ikinci adım aynı işaretin 1 veya 3’ü olmak zorunda.
-  - Arka arkaya aynı değer olamaz; işaret üçlü içinde sabittir; tüm dosyalar kronolojide tüketilir (atlama yok).
-- Joker: Joker işaretli dosyanın XYZ kümesi tüm offsetleri (-3..+3) kapsar.
-- Görsellik: Her offset üstüne gelince kaynak dosya adı tooltip olarak görünür; Joker’ler “(Joker)” etiketi alır. Aynı üçlünün (0’sız) birden fazla tekrar ettiği örüntülerde blok arka planları renklendirilir.
-- Performans: app48’te beam=512 ve en fazla 1000 örüntü; app72/80/90/96/120’de sınırlar kaldırılmıştır.
-
-### 3.10 Stacked Analysis (IOU)
-- Tüm IOU sayfalarında yeni analizler “Analiz #YYYYMMDD_HHMMSS” başlığıyla üstte birikir; form sayfa altında yeniden render edilir.
-- Önceki sonuçlar `previous_results_html` alanı ile base64 olarak korunur ve Joker seçiminde “Önceki Analizler” bölümü gösterilir.
-- Not: app120’de stacked analysis yalnız IOU için geçerlidir (IOV klasik tek sonuçtur).
-
+### 3.13 Stacked IOU Akışı
+- IOU’lar iki aşamalıdır: önce Joker seçimi, ardından analiz. Önceki sonuçlar `previous_results_html` ile base64 taşınır ve “Önceki Analizler” bölümü gösterilir.
+- Stacked: Yeni sonuç “Analiz #YYYYMMDD_HHMMSS” başlığıyla üstte birikir; form yeniden eklenir. app120’de stacking yalnız IOU için geçerlidir (IOV tek seferlik).
+- app72/app120 IOU’da örüntü zinciri geçmişi (`previous_pattern_payload`) saklanır; gruplar başlangıç değerine göre “Toplu örüntüler” panelinde listelenir.
 
 ## 4) Uygulama Başlıkları
 
-Her uygulama tipik olarak şu modüllere sahiptir: `counter.py` (sayım + sinyal), `main.py` (converter), `web.py` (minimal HTTP arayüzü).
+Her uygulama tipik olarak `counter.py` (sayım/sinyal), `main.py` (converter), `web.py` (HTTP arayüz) içerir. Counter CLI’lar `--predict/--predict-next` destekler (app48 hariç).
 
 ### 4.1 app48 (48m)
-- Port: 2020. Sekmeler: Analiz, DC List (filtreli), Matrix, IOU Tarama, 12→48 Converter (route: `/convert`).
-- Sentetik mumlar: İlk gün hariç her gün 17:12–19:36 arasına 18:00 ve 18:48 eklenir (open/close lineer; high/low min/max). DC hesapları sentetik sonrası yeniden yapılır.
-- DC istisnası: 13:12–19:36 arası DC’ler normal kabul. IOU’da 18:00/18:48/19:36 asla listelenmez.
-- IOU: Limit + ±tolerans (vars 0.005), çoklu CSV, XYZ ve örüntüleme destekli. Eşik “≥”.
-- DC List: `only_syn` / `only_real` filtreleri vardır.
+- Port: 2020. Sekmeler: Analiz, DC List (filtreli), Matrix, IOU Tarama, 12→48 Converter (`/convert`).
+- Sentetik mumlar: İlk gün hariç her gün 17:12–19:36 arasına 18:00 ve 18:48 eklenir (open/close lineer, high/low min/max), sonra DC yeniden hesaplanır.
+- DC istisnası: 13:12–19:36 DC’ler normal; 18:00/18:48/19:36 DC sayılmaz. IOU’da bu üç slot listelenmez.
+- IOU: Limit + tolerans (vars 0.005), çoklu CSV, XYZ, özet tablo, örüntüleme + Joker, stacked. Positive offset/DC skip mantığı analiz ve matrix’te de geçerli.
+- DC List: `only_syn` / `only_real` filtreleri. Matrix ve analizde veri dışı satırlar “pred” olarak gösterilir.
+- Converter: Çoklu 12m CSV (UTC-5 varsayılan), +1h normalize, 4×12m→1×48m; çoklu dosya ZIP iner.
 
 ### 4.2 app72 (72m)
 - Port: 2172. Sekmeler: Analiz, DC List, Matrix, IOU Tarama, 12→72 Converter.
-- DC istisnaları: 18:00; Cuma 16:48; (Pazar hariç) 19:12, 20:24; Cuma 16:00 DC olamaz.
-- IOU kısıtları: 15:36 ve 16:48 mumları günlük olarak IOU dışıdır; 18:00/19:12/20:24 ise “ikinci Pazar” gününde serbest kalır. İlk haftanın Cuma 16:48 IOU değildir.
-- IOU: Limit + ±tolerans (≥); çoklu CSV; XYZ; örüntüleme + Joker. Stacked analysis açık.
-- IOU örüntü zinciri: Ardışık analizlerde pattern listeleri `Toplu örüntüler` panelinde zincirlenip başlangıç değerine göre `<details>` başlıkları altında gruplanır. Joker/dosya bilgisi taşınır. Ayrıntılar için `app72_pattern_chaining.md`.
-- 12→72: 7×12m → 1×72m; Pazar 18:00 öncesi ve Cumartesi atlanır. Tahmin motoru hafta sonu boşluğunu atlar.
+- DC istisnaları: 18:00; Cuma 16:48; (Pazar hariç) 19:12, 20:24; Cuma 16:00 DC değildir.
+- IOU kısıtları: 15:36, 16:48 her gün dışı; 18:00/19:12/20:24 ikinci Pazar serbest; ilk haftanın Cuma 16:48’i IOU vermez.
+- IOU: Limit + tolerans (≥), çoklu CSV, XYZ + slot koruması, özet tablo, örüntüleme + Joker, stacked. Örüntü zinciri `Toplu örüntüler` panelinde geçmişle birleşir (bkz. `app72_pattern_chaining.md`).
+- Tahmin: Hafta sonu boşluğunu Pazar 18:00’a sıçrayarak hesaplar.
+- Converter: 7×12m→1×72m; Cumartesi ve Pazar 18:00 öncesi atlanır; çoklu dosya destekli (ZIP çıktısı).
 
 ### 4.3 app80 (80m)
 - Port: 2180. Sekmeler: Analiz, DC List, Matrix, IOU Tarama, 20→80 Converter.
-- DC/IOU kısıtları: (Pazar hariç) 18:00, 19:20, 20:40 DC olamaz; Cuma 16:40 kapanış. IOU’da 15:20, 16:40, 18:00 her gün dışlanır; 19:20/20:40 yalnızca Pazar günleri serbesttir.
-- IOU: Limit + ±tolerans (≥), çoklu CSV, XYZ, örüntüleme + Joker, stacked.
-- 20→80: 4×20m → 1×80m (open=ilk, close=son, high/low blok max/min). Tahminde hafta sonu atlanır.
+- DC/IOU kısıtları: (Pazar hariç) 18:00, 19:20, 20:40 DC/IOU dışı; Cuma 16:40 kapanış DC/IOU dışıdır; 19:20/20:40 yalnız Pazar IOU verebilir.
+- IOU: Limit + tolerans, çoklu CSV, XYZ, örüntüleme + Joker, stacked. Tahminler hafta sonu boşluğunu atlar.
+- Converter: 4×20m→1×80m; Cumartesi ve Pazar 18:00 öncesi atlanır; çoklu dosya ZIP.
 
 ### 4.4 app90 (90m)
-- Port: 2190. Sekmeler: Analiz, DC List, Matrix, IOU Tarama, 30→90 Converter.
-- DC kısıtları: 18:00; (Pazar hariç) 19:30; Cuma 16:30. IOU’da bu slotlara ek olarak 15:00, 16:30, 16:40 ve 18:00 her gün dışlanır; (Pazar hariç) 19:30 yine IOU vermez.
-- IOU: Limit + ±tolerans (≥), çoklu CSV, XYZ, örüntüleme + Joker, stacked.
-- 30→90: 3×30m → 1×90m; Cumartesi ve Pazar 18:00 öncesi atlanır.
+- Port: 2190. Sekmeler: Analiz, DC List, Matrix, OC/PrevOC, IOU Tarama, 30→90 Converter.
+- DC kısıtları: 18:00; (Pazar hariç) 19:30; Cuma 16:30 DC değildir.
+- IOU kısıtları: 15:00, 16:30, 16:40, 18:00 IOU dışı; (Pazar hariç) 19:30 IOU vermez.
+- IOU: Limit + tolerans, çoklu CSV, XYZ, örüntüleme + Joker, stacked.
+- OC/PrevOC sekmesi: `|PrevOC| ≥ limit+tolerans` koşuluyla katkı toplar; zıt işaret +, aynı işaret −; haber filtresi seçilirse ilgili haber penceresine denk gelen katkılar atlanır; offset başına toplam/pozitif/negatif sayıları raporlanır.
+- Converter: 3×30m→1×90m; Cumartesi ve Pazar 18:00 öncesi atlanır; çoklu dosya ZIP.
 
 ### 4.5 app96 (96m)
 - Port: 2196. Sekmeler: Analiz, DC List, Matrix, IOU Tarama, 12→96 Converter.
-- DC/IOU kısıtları: 18:00; (Pazar hariç) 19:36; Cuma 16:24. IOU’da ek olarak 14:48 ve 16:24 her gün dışlanır.
-- IOU: Limit + ±tolerans (≥), çoklu CSV, XYZ, örüntüleme + Joker, stacked.
-- 12→96: 8×12m → 1×96m; Cumartesi ve Pazar 18:00 öncesi atlanır.
+- DC/IOU kısıtları: 18:00; (Pazar hariç) 19:36; Cuma 16:24 DC değildir; IOU’da ek 14:48 ve 16:24 dışıdır.
+- IOU: Limit + tolerans, çoklu CSV, XYZ, örüntüleme + Joker, stacked. Tahminler doğrusal.
+- Converter: 8×12m→1×96m; Cumartesi ve Pazar 18:00 öncesi atlanır; çoklu dosya ZIP.
 
 ### 4.6 app120 (120m)
 - Port: 2120. Sekmeler: Analiz, DC List, Matrix, IOV Tarama, IOU Tarama, 60→120 Converter.
 - DC istisnaları: 18:00 DC değildir; (Pazar hariç) 20:00 DC olamaz; Cuma 16:00 DC sayılmaz.
-- IOU kısıtları: 16:00 ve 18:00 her gün dışlanır; 20:00 tüm günlerde IOU değildir (Pazar dahil); tüm Pazar mumları IOU dışıdır.
-- IOV: Zıt işaretli, eşik üstü çiftler. IOU: Aynı işaretli, `limit + tolerans` ≥ eşik. Limit negatifse abs alınır.
-- IOU: Çoklu CSV, XYZ, örüntüleme + Joker, stacked (IOV klasik).
-- IOU örüntü zinciri: ardışık taramalarda `Toplu örüntüler` paneli (app72 mantığı) sonuçları beginning offset’e göre gruplayıp Joker/dosya meta bilgisini korur. Ayrıntılar için `app72_pattern_chaining.md`.
-- 60→120: Normalize eder, CSV indirilebilir.
+- IOU kısıtları: 16:00, 18:00 her gün; 20:00 tüm günlerde IOU dışı; tüm Pazar mumları IOU dışıdır.
+- IOU: Limit + tolerans, çoklu CSV, XYZ, örüntüleme + Joker, stacked (örüntü zinciri app72 ile aynı mantıkta).
+- IOV: Limit (tolerans yok), zıt işaretli çiftler; stacked değildir.
+- Tahmin: Hafta sonu boşluğunu Pazar 18:00’a sıçrayarak hesaplar.
+- Converter: 60→120 normalize eder, indirilebilir CSV; çoklu dosya ZIP.
 
 ### 4.7 app321 (60m)
 - Port: 2019. Sekmeler: Analiz, DC List, Matrix, IOU Tarama.
 - DC istisnaları: 13:00–20:00 arası DC’ler normal kabul; 20:00 (Pazar hariç) DC olamaz.
 - IOU kısıtları: 18:00, 19:00, 20:00 IOU değildir.
-- IOU: Limit + ±tolerans (≥), çoklu CSV, XYZ, örüntüleme + Joker, stacked.
-
+- IOU: Limit + tolerans, çoklu CSV, XYZ, örüntüleme + Joker, stacked. IOU dosya sınırı 25.
+- Tahmin: Doğrusal; pozitif offset DC atlama kuralı geçerli.
 
 ## 5) Web Katmanı ve Ortak Araçlar
 
 ### 5.1 landing
-- `python3 -m landing.web --port 2000` basit kartlı sayfa üretir.
+- `python3 -m landing.web --port 2000` kartlı landing üretir; `photos/` altındaki görselleri ve favicon linklerini kullanır.
 
 ### 5.2 appsuite (Reverse Proxy)
-- Tüm uygulamaları tek host altında path bazlı sunar (ör: `/app72`).
-- Arka uçlar ayrı thread’lerde başlar; health: `/health` → `ok`.
-- HTML’de `href` ve `action` yolları proxy prefix’ine göre rewrite edilir.
-- Güvenlik başlıkları: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Content-Security-Policy` (inline stil izinli) gönderilir.
-- Maksimum upload: 50 MB; çoklu dosya sayısı: 50 (app321 IOU ve calendar_md için 25 dosya sınırı).
+- Tüm uygulamaları tek host altında path bazlı sunar (örn. `/app72`). İç servisleri ayrı thread’lerde varsayılan 92xx portlarda başlatır; health: `/health` → `ok`.
+- HTML içindeki `href` ve `action` değerlerini prefix’e göre rewrite eder.
+- Güvenlik başlıkları ekler; upload guard 50 MB.
 
-### 5.3 calendar_md ve news_loader
-- calendar_md web: `python3 -m calendar_md.web --port 2300` — çoklu `.md` yükler, her biri için JSON üretir (çoklu ise ZIP). CLI: `python3 -m calendar_md --input takvim.md --output out.json --year 2025`.
-- news_loader: `economic_calendar/*.json` dosyalarını birleştirir ve önbellekler; alanlar eksikse alternatif adlar denenir. Kategoriler: `holiday`, `all-day`, `speech`, `normal`. “All Day” kayıtlar gün bazında eşleştirilir; `recent-null` penceresi desteklenir.
+### 5.3 calendar_md
+- Web: `python3 -m calendar_md.web --port 2300` — çoklu `.md` yükler (max 25 dosya), her biri için JSON üretir; çokluysa ZIP. Formda yıl/timezone/source alanları vardır.
+- CLI: `python3 -m calendar_md --input takvim.md --output out.json --year 2025 --timezone UTC-4 --source markdown_import`.
 
+### 5.4 news_loader
+- `economic_calendar/*.json` ve kök JSON’ları birleştirip önbellekler. Eksik saat alanlarında alternatif adları dener. Kategoriler: `holiday`, `all-day`, `speech`, `normal`. All-day kayıtlar gün bazlı eşleşir; `recent-null` penceresi desteklenir.
+
+### 5.5 favicon
+- `render_head_links` ile tüm HTML’de kullanılan link seti; `/favicon.ico`, manifest ve boyutlu PNG’ler servis edilir.
 
 ## 6) Dağıtım ve Çalıştırma
 
-1) Python 3.11+ kurulu olmalı.
-2) (İsteğe bağlı) `python3 -m venv .venv && source .venv/bin/activate`
-3) `pip install -r requirements.txt` (yalnız `gunicorn`)
-4) CLI örneği: `python3 -m app120.counter --csv data.csv`
-5) Web örneği: `python3 -m app120.web --host 0.0.0.0 --port 2120`
-6) Üretim: `gunicorn app120.web:main` benzeri komutlar.
+1) Python 3.11+.  
+2) (İsteğe bağlı) `python3 -m venv .venv && source .venv/bin/activate`  
+3) `pip install -r requirements.txt` (`gunicorn`).  
+4) CLI örneği: `python3 -m app120.counter --csv data.csv --sequence S2 --offset 0`.  
+5) Web örneği: `python3 -m app120.web --host 0.0.0.0 --port 2120`.  
+6) appsuite: `python3 -m appsuite.web --host 0.0.0.0 --port 2000` (iç portlar argümanla değiştirilebilir).  
+7) Üretim: `gunicorn app120.web:main` benzeri komutlar.
 
+## 7) Geliştirici Notları
 
-## 7) Geliştirici Notları (Ajanlar için de geçerli)
-
-- Stil: Mevcut mimariye uygun, minimal bağımlılık. Gereksiz karmaşıklıktan kaçının.
-- Veri yok: Repoda hazır CSV bulunmaz; kendi veri setinizi kullanın.
-- Eşik sınırları: IOU’da `≥ (limit + tolerans)`; IOV’da tolerans yok. Dizi “skip” kuralı (S1: 1,3 — S2: 1,5) tüm taramalarda geçerli.
+- Counter CLI’lar UTC-4 veri bekler (app48 hariç). Web ve converter’lar `input_tz` ile normalize eder.
+- IOU eşiği: `≥ (limit + tolerans)`; IOV’da tolerans yok. Dizi skip kuralı tüm taramalarda geçerlidir.
 - app48 `/convert` rotası diğerlerinden farklıdır (diğerleri `/converter`).
-- XYZ filtresi spec↔web farkı (OR ve `>` vs AND ve `≥`) bilerek belgelenmiş bir sapmadır.
-- Güvenlik başlıkları tüm web katmanlarında set edilir; inline CSS tooltipler için CSP’de `unsafe-inline` stil izni vardır.
-- Maksimum yükleme büyüklükleri ve dosya sayıları UI’da ve appsuite içinde sınırlandırılmıştır (50MB/50; app321 IOU ve calendar_md 25 dosya).
-
+- IOU özet modunda ayrıntılı tablo yerine XYZ kümesi + elenen offsetler listelenir; örüntü paneli yine eklenir.
+- Haber filtresi: IOU’da XYZ mantığı (web OR sapması); app90 OC/PrevOC sekmesinde haber filtresi katkı satırlarını tamamen atlar.
+- Güvenlik başlıkları tüm web katmanlarında set edilir; tooltipler için CSP’de `unsafe-inline` stil izni vardır.
+- Dosya adları sanitize edilir, tekrar edenlerde sayısal ek yapılır.
 
 ## 8) Sorun Giderme ve İpuçları
 
-- Limit=0 çoğu sinyali eler; IOU’da tolerans varsayılanı (0.005) nedeni ile pratik eşik budur.
-- DC List sekmeleri ham DC’leri CSV’ye çıkarmak için uygundur.
-- IOU sonuçlarındaki “(rule)” etiketi DC kapsaması ile eşleşir; app48’te “syn/real” ayrımı vardır.
-- app72’de “ikinci Pazar” kuralı: IOU kısıtlı saatler (18:00, 19:12, 20:24) ikinci Pazar gününde serbesttir; 15:36 slotu her zaman kapalı kalır, 16:48 ise XYZ’de özel slot koruması altındadır.
-
+- Limit=0 çoğu sinyali eler; IOU’da varsayılan tolerans (0.005) pratik eşiği belirler.
+- DC List sekmeleri ham DC’leri CSV’ye çıkarmak için uygundur (app48’te syn/real ayrımı).
+- Örüntü aramaları app48’te beam=512 / max 1000; diğerlerinde sınırsız ancak büyük girişlerde yavaş olabilir.
+- app72’de ikinci Pazar kuralı ve slot korumasını unutma; app120’de tüm Pazar IOU dışı.
+- IOU sonuçlarındaki “(rule)” etiketi DC kapsamasıyla, “(syn)” etiketi sentetik mumla ilişkilidir.
+- Çoklu dosya dönüştürücülerde giriş timeframe’inin doğru olduğundan emin ol (aksi halde hata verir).
 
 — Son —
