@@ -733,7 +733,7 @@ def calculate_total_sums_for_candles(
             if abs(prev_oc) <= limit:
                 continue
             same_sign = (oc * prev_oc) > 0
-            contribution = -oc if same_sign else oc
+            contribution = -abs(oc) if same_sign else abs(oc)
             totals[offset] = totals.get(offset, 0.0) + contribution
             details.setdefault(offset, []).append({
                 "seq": seq_val,
