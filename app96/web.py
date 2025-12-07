@@ -504,6 +504,10 @@ def render_combined_pattern_panel(
                     file_label = flat_names[pos] if pos < len(flat_names) and flat_names[pos] else f"Dosya {pos + 1}"
                     detail_lines: List[str] = []
                     for rec in detail_entries:
+                        if isinstance(rec, dict) and "omitted" in rec:
+                            omitted_count = int(rec.get("omitted", 0))
+                            detail_lines.append(f"... (+{omitted_count} kayıt daha)")
+                            continue
                         seq_v = rec.get("seq")
                         ts_val = rec.get("ts") or "-"
                         oc_val = rec.get("oc")
@@ -701,23 +705,32 @@ def render_pattern_panel(
     return "<div class='card'><h3>Örüntüleme</h3>" + info + seq_info + last_line + "".join(lines) + "</div>"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_FILES = 50
+TOTAL_SUM_DETAIL_LIMIT = 200
 
 
 def calculate_total_sums_for_candles(
     candles: List[CounterCandle],
     sequence: str,
     limit: float,
+    allowed_offsets: Optional[Set[int]] = None,
+    detail_limit: int = TOTAL_SUM_DETAIL_LIMIT,
+    dc_flags: Optional[List[Optional[bool]]] = None,
+    base_idx: Optional[int] = None,
 ) -> Tuple[Dict[int, float], Dict[int, List[Dict[str, Any]]]]:
     seq_key = (sequence or "S2").upper()
     if seq_key not in SEQUENCES:
         seq_key = "S2"
     seq_values = SEQUENCES[seq_key][:]
     skip_values = {1, 3} if seq_key == "S1" else {1, 5}
-    dc_flags = compute_dc_flags(candles)
-    base_idx, _ = find_start_index(candles, DEFAULT_START_TOD)
+    dc_flags = dc_flags if dc_flags is not None else compute_dc_flags(candles)
+    if base_idx is None:
+        base_idx, _ = find_start_index(candles, DEFAULT_START_TOD)
     totals: Dict[int, float] = {}
     details: Dict[int, List[Dict[str, Any]]] = {}
+    detail_limit = max(0, int(detail_limit)) if detail_limit is not None else 0
     for offset in range(-3, 4):
+        if allowed_offsets is not None and offset not in allowed_offsets:
+            continue
         alignment = compute_offset_alignment(candles, dc_flags, base_idx, seq_values, offset)
         for seq_val, alloc in zip(seq_values, alignment.hits):
             if seq_val in skip_values:
@@ -735,13 +748,26 @@ def calculate_total_sums_for_candles(
             same_sign = (oc * prev_oc) > 0
             contribution = -abs(oc) if same_sign else abs(oc)
             totals[offset] = totals.get(offset, 0.0) + contribution
-            details.setdefault(offset, []).append({
-                "seq": seq_val,
-                "ts": ts.strftime('%Y-%m-%d %H:%M:%S'),
-                "oc": oc,
-                "prev_oc": prev_oc,
-                "contribution": contribution,
-            })
+            if detail_limit == 0:
+                continue
+            bucket = details.setdefault(offset, [])
+            if len(bucket) < detail_limit:
+                bucket.append({
+                    "seq": seq_val,
+                    "ts": ts.strftime('%Y-%m-%d %H:%M:%S'),
+                    "oc": oc,
+                    "prev_oc": prev_oc,
+                    "contribution": contribution,
+                })
+            elif len(bucket) == detail_limit:
+                # Tek seferlik “kırpıldı” uyarısı
+                bucket.append({"omitted": 1})
+            else:
+                last = bucket[-1]
+                if isinstance(last, dict) and "omitted" in last:
+                    last["omitted"] = int(last.get("omitted", 1)) + 1
+                else:
+                    bucket.append({"omitted": 1})
     return totals, details
 
 def _add_security_headers(handler: BaseHTTPRequestHandler) -> None:
@@ -1507,6 +1533,7 @@ class App96Handler(BaseHTTPRequestHandler):
                         candles_entry = [CounterCandle(ts=c.ts + delta, open=c.open, high=c.high, low=c.low, close=c.close) for c in candles_entry]
                         tz_label = "UTC-5 -> UTC-4 (+1h)"
 
+                    dc_flags_entry = compute_dc_flags(candles_entry)
                     base_idx, base_status = find_start_index(candles_entry, DEFAULT_START_TOD)
                     report = detect_iou_candles(candles_entry, sequence, limit_val, tolerance=tolerance_val)
 
@@ -1613,6 +1640,20 @@ class App96Handler(BaseHTTPRequestHandler):
                     if xyz_enabled and not summary_mode:
                         joker_tag = " (Joker)" if idx_entry in joker_indices else ""
                         xyz_line = f"<div><strong>XYZ Kümesi{joker_tag}:</strong> {html.escape(xyz_text)}</div>"
+
+                    # PrevOC-limit tabanlı total sum hesapla (sadece limit, tolerans yok)
+                    allowed_offs_for_totals: Optional[Set[int]] = set(xyz_offsets) if xyz_offsets else None
+                    offset_totals, offset_details = calculate_total_sums_for_candles(
+                        candles_entry,
+                        sequence,
+                        limit_val,
+                        allowed_offsets=allowed_offs_for_totals,
+                        detail_limit=TOTAL_SUM_DETAIL_LIMIT,
+                        dc_flags=dc_flags_entry,
+                        base_idx=report.base_idx if isinstance(report.base_idx, int) else None,
+                    )
+                    file_offset_totals.append(offset_totals)
+                    file_offset_details.append(offset_details)
 
                     if summary_mode:
                         elimination_rows = []
