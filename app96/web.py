@@ -504,10 +504,6 @@ def render_combined_pattern_panel(
                     file_label = flat_names[pos] if pos < len(flat_names) and flat_names[pos] else f"Dosya {pos + 1}"
                     detail_lines: List[str] = []
                     for rec in detail_entries:
-                        if isinstance(rec, dict) and "omitted" in rec:
-                            omitted_count = int(rec.get("omitted", 0))
-                            detail_lines.append(f"... (+{omitted_count} kayıt daha)")
-                            continue
                         seq_v = rec.get("seq")
                         ts_val = rec.get("ts") or "-"
                         oc_val = rec.get("oc")
@@ -705,7 +701,6 @@ def render_pattern_panel(
     return "<div class='card'><h3>Örüntüleme</h3>" + info + seq_info + last_line + "".join(lines) + "</div>"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_FILES = 50
-TOTAL_SUM_DETAIL_LIMIT = 200
 
 
 def calculate_total_sums_for_candles(
@@ -713,7 +708,6 @@ def calculate_total_sums_for_candles(
     sequence: str,
     limit: float,
     allowed_offsets: Optional[Set[int]] = None,
-    detail_limit: int = TOTAL_SUM_DETAIL_LIMIT,
     dc_flags: Optional[List[Optional[bool]]] = None,
     base_idx: Optional[int] = None,
 ) -> Tuple[Dict[int, float], Dict[int, List[Dict[str, Any]]]]:
@@ -727,7 +721,6 @@ def calculate_total_sums_for_candles(
         base_idx, _ = find_start_index(candles, DEFAULT_START_TOD)
     totals: Dict[int, float] = {}
     details: Dict[int, List[Dict[str, Any]]] = {}
-    detail_limit = max(0, int(detail_limit)) if detail_limit is not None else 0
     for offset in range(-3, 4):
         if allowed_offsets is not None and offset not in allowed_offsets:
             continue
@@ -748,26 +741,14 @@ def calculate_total_sums_for_candles(
             same_sign = (oc * prev_oc) > 0
             contribution = -abs(oc) if same_sign else abs(oc)
             totals[offset] = totals.get(offset, 0.0) + contribution
-            if detail_limit == 0:
-                continue
             bucket = details.setdefault(offset, [])
-            if len(bucket) < detail_limit:
-                bucket.append({
-                    "seq": seq_val,
-                    "ts": ts.strftime('%Y-%m-%d %H:%M:%S'),
-                    "oc": oc,
-                    "prev_oc": prev_oc,
-                    "contribution": contribution,
-                })
-            elif len(bucket) == detail_limit:
-                # Tek seferlik “kırpıldı” uyarısı
-                bucket.append({"omitted": 1})
-            else:
-                last = bucket[-1]
-                if isinstance(last, dict) and "omitted" in last:
-                    last["omitted"] = int(last.get("omitted", 1)) + 1
-                else:
-                    bucket.append({"omitted": 1})
+            bucket.append({
+                "seq": seq_val,
+                "ts": ts.strftime('%Y-%m-%d %H:%M:%S'),
+                "oc": oc,
+                "prev_oc": prev_oc,
+                "contribution": contribution,
+            })
     return totals, details
 
 def _add_security_headers(handler: BaseHTTPRequestHandler) -> None:
@@ -1648,7 +1629,6 @@ class App96Handler(BaseHTTPRequestHandler):
                         sequence,
                         limit_val,
                         allowed_offsets=allowed_offs_for_totals,
-                        detail_limit=TOTAL_SUM_DETAIL_LIMIT,
                         dc_flags=dc_flags_entry,
                         base_idx=report.base_idx if isinstance(report.base_idx, int) else None,
                     )
