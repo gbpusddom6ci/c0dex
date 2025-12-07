@@ -396,6 +396,7 @@ def render_combined_pattern_panel(
         info_line = f"<div><strong>Toplam birleşik örüntü:</strong> {total_unique}{limit_note}</div>"
         flat_names: List[str] = []
         flat_joker_indices: Set[int] = set()
+        flat_meta_entries: List[Dict[str, Any]] = []
         cursor = 0
         group_widths = [_infer_pattern_group_width(group) for group in pattern_groups]
         for idx in range(group_count):
@@ -412,6 +413,19 @@ def render_combined_pattern_panel(
             elif length_for_cursor and not names:
                 names = [""] * length_for_cursor
             flat_names.extend(names)
+            totals_list = meta.get("offset_totals") if isinstance(meta, dict) else None
+            details_list = meta.get("offset_details") if isinstance(meta, dict) else None
+            for pos in range(length_for_cursor):
+                total_map: Dict[Any, Any] = {}
+                detail_map: Dict[Any, Any] = {}
+                if isinstance(totals_list, list) and pos < len(totals_list) and isinstance(totals_list[pos], dict):
+                    total_map = totals_list[pos]
+                if isinstance(details_list, list) and pos < len(details_list) and isinstance(details_list[pos], dict):
+                    detail_map = details_list[pos]
+                flat_meta_entries.append({
+                    "totals": total_map,
+                    "details": detail_map,
+                })
             raw_jokers = meta.get("joker_indices") if isinstance(meta, dict) else None
             if isinstance(raw_jokers, list):
                 for j in raw_jokers:
@@ -433,11 +447,44 @@ def render_combined_pattern_panel(
             grouped[start_val].append(seq)
 
         def _render_group(patterns: List[List[int]]) -> str:
+            def _fmt_num(val: float) -> str:
+                try:
+                    return f"{float(val):+.5f}"
+                except Exception:
+                    return "-"
+
+            def _offset_payload(pos: int, offset: int) -> Tuple[float, List[Dict[str, Any]]]:
+                if pos < 0 or pos >= len(flat_meta_entries):
+                    return 0.0, []
+                meta_entry = flat_meta_entries[pos] if pos < len(flat_meta_entries) else {}
+                totals_map = meta_entry.get("totals") if isinstance(meta_entry, dict) else {}
+                details_map = meta_entry.get("details") if isinstance(meta_entry, dict) else {}
+                val = 0.0
+                if isinstance(totals_map, dict):
+                    if offset in totals_map:
+                        try:
+                            val = float(totals_map[offset])
+                        except Exception:
+                            val = 0.0
+                    elif str(offset) in totals_map:
+                        try:
+                            val = float(totals_map[str(offset)])
+                        except Exception:
+                            val = 0.0
+                detail_list: List[Dict[str, Any]] = []
+                if isinstance(details_map, dict):
+                    payload = details_map.get(offset)
+                    if payload is None:
+                        payload = details_map.get(str(offset))
+                    if isinstance(payload, list):
+                        detail_list = payload
+                return val, detail_list
+
             # Chained panel: özel vurgu (3+ ardışık "ayna" üçlü grupları) uygulansın
             pattern_highlights: List[Set[int]] = [
                 _find_mirror_chain_highlights(seq) for seq in patterns
             ]
-            return render_pattern_panel(
+            pattern_html = render_pattern_panel(
                 [],
                 allow_zero_after_start=allow_zero_after_start,
                 file_names=flat_names if flat_names else None,
@@ -446,6 +493,48 @@ def render_combined_pattern_panel(
                 precomputed_patterns=patterns,
                 highlight_positions=pattern_highlights,
             )
+            totals_blocks: List[str] = []
+            for idx_pat, seq in enumerate(patterns):
+                per_file_lines: List[str] = []
+                net_total = 0.0
+                for pos, offset in enumerate(seq):
+                    val, detail_entries = _offset_payload(pos, offset)
+                    net_total += val
+                    file_label = flat_names[pos] if pos < len(flat_names) and flat_names[pos] else f"Dosya {pos + 1}"
+                    detail_lines: List[str] = []
+                    for rec in detail_entries:
+                        seq_v = rec.get("seq")
+                        ts_val = rec.get("ts") or "-"
+                        oc_val = rec.get("oc")
+                        prev_val = rec.get("prev_oc")
+                        contrib_val = rec.get("contribution")
+                        detail_lines.append(
+                            f"seq {seq_v} · {html.escape(str(ts_val))} · OC {_fmt_num(oc_val)} · PrevOC {_fmt_num(prev_val)} · katkı {_fmt_num(contrib_val)}"
+                        )
+                    if not detail_lines:
+                        detail_lines.append("Kayıt yok")
+                    per_file_lines.append(
+                        f"<div><strong>{html.escape(file_label)}</strong> — offset {html.escape(_fmt_off(offset))}: {_fmt_num(val)}"
+                        f"<br>{'<br>'.join(detail_lines)}</div>"
+                    )
+                summary = f"Net Total: {_fmt_num(net_total)} (örüntü {idx_pat + 1})"
+                totals_blocks.append(
+                    "<details style='margin-top:8px;'>"
+                    f"<summary>{html.escape(summary)}</summary>"
+                    "<div style='margin-top:6px; display:flex; flex-direction:column; gap:6px;'>"
+                    + "".join(per_file_lines) +
+                    "</div>"
+                    "</details>"
+                )
+            totals_html = ""
+            if totals_blocks:
+                totals_html = (
+                    "<div class='card' style='margin-top:12px;'>"
+                    "<h4 style='margin:0 0 8px;'>Total Sum</h4>"
+                    + "".join(totals_blocks) +
+                    "</div>"
+                )
+            return pattern_html + totals_html
 
         grouped_lines: List[str] = []
         for start_val in group_order:
@@ -1206,9 +1295,21 @@ class App96Handler(BaseHTTPRequestHandler):
                                         continue
                             else:
                                 joker_out = []
+                            totals_raw = meta.get("offset_totals")
+                            totals_out: List[Dict[int, float]] = []
+                            if isinstance(totals_raw, list):
+                                for item in totals_raw:
+                                    totals_out.append(item if isinstance(item, dict) else {})
+                            details_raw = meta.get("offset_details")
+                            details_out: List[Dict[int, List[Dict[str, Any]]]] = []
+                            if isinstance(details_raw, list):
+                                for item in details_raw:
+                                    details_out.append(item if isinstance(item, dict) else {})
                             pattern_meta_history.append({
                                 "file_names": names_out,
                                 "joker_indices": joker_out,
+                                "offset_totals": totals_out,
+                                "offset_details": details_out,
                             })
                     if len(pattern_meta_history) < len(pattern_groups_history):
                         pattern_meta_history.extend({} for _ in range(len(pattern_groups_history) - len(pattern_meta_history)))
@@ -1343,6 +1444,8 @@ class App96Handler(BaseHTTPRequestHandler):
                 summary_entries: List[Dict[str, Any]] = []
                 all_xyz_sets: List[Set[int]] = []
                 all_file_names: List[str] = []
+                file_offset_totals: List[Dict[int, float]] = []
+                file_offset_details: List[Dict[int, List[Dict[str, Any]]]] = []
                 for idx_entry, entry in enumerate(effective_entries):
                     entry_data = entry.get("data")
                     if isinstance(entry_data, (bytes, bytearray)):
@@ -1446,6 +1549,29 @@ class App96Handler(BaseHTTPRequestHandler):
                                 f"<td>{news_cell_html}</td></tr>"
                             )
 
+                    # PrevOC-limit tabanlı total sum hesapla (sadece limit, tolerans yok)
+                    offset_totals: Dict[int, float] = {}
+                    offset_details: Dict[int, List[Dict[str, Any]]] = {}
+                    for item in report.offsets:
+                        for hit in item.hits:
+                            if abs(hit.prev_oc) <= limit_val:
+                                continue
+                            # IOU sonuçları aynı işaretli; yine de işaret kuralını uygula
+                            contribution = 0.0
+                            if hit.oc != 0:
+                                same_sign = (hit.oc * hit.prev_oc) > 0
+                                contribution = -hit.oc if same_sign else hit.oc
+                            offset_totals[item.offset] = offset_totals.get(item.offset, 0.0) + contribution
+                            offset_details.setdefault(item.offset, []).append({
+                                "seq": hit.seq_value,
+                                "ts": hit.ts.strftime('%Y-%m-%d %H:%M:%S'),
+                                "oc": hit.oc,
+                                "prev_oc": hit.prev_oc,
+                                "contribution": contribution,
+                            })
+                    file_offset_totals.append(offset_totals)
+                    file_offset_details.append(offset_details)
+
                     base_offsets = [-3, -2, -1, 0, 1, 2, 3]
                     xyz_offsets = [o for o in base_offsets if not offset_has_non_news.get(o, False)] if xyz_enabled else base_offsets
                     # Joker: XYZ tam kapsam
@@ -1506,6 +1632,8 @@ class App96Handler(BaseHTTPRequestHandler):
                     current_meta = {
                         "file_names": all_file_names[:],
                         "joker_indices": sorted(joker_indices) if joker_indices else [],
+                        "offset_totals": file_offset_totals[:],
+                        "offset_details": file_offset_details[:],
                     }
                     pattern_panel_html = render_pattern_panel(
                         all_xyz_sets,
