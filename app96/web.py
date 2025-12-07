@@ -22,6 +22,7 @@ from .counter import (
     compute_offset_alignment,
     predict_time_after_n_steps,
     detect_iou_candles,
+    is_forbidden_iou_time,
 )
 from .main import (
     Candle as ConverterCandle,
@@ -700,6 +701,48 @@ def render_pattern_panel(
     return "<div class='card'><h3>Örüntüleme</h3>" + info + seq_info + last_line + "".join(lines) + "</div>"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_FILES = 50
+
+
+def calculate_total_sums_for_candles(
+    candles: List[CounterCandle],
+    sequence: str,
+    limit: float,
+) -> Tuple[Dict[int, float], Dict[int, List[Dict[str, Any]]]]:
+    seq_key = (sequence or "S2").upper()
+    if seq_key not in SEQUENCES:
+        seq_key = "S2"
+    seq_values = SEQUENCES[seq_key][:]
+    skip_values = {1, 3} if seq_key == "S1" else {1, 5}
+    dc_flags = compute_dc_flags(candles)
+    base_idx, _ = find_start_index(candles, DEFAULT_START_TOD)
+    totals: Dict[int, float] = {}
+    details: Dict[int, List[Dict[str, Any]]] = {}
+    for offset in range(-3, 4):
+        alignment = compute_offset_alignment(candles, dc_flags, base_idx, seq_values, offset)
+        for seq_val, alloc in zip(seq_values, alignment.hits):
+            if seq_val in skip_values:
+                continue
+            idx = alloc.idx
+            if idx is None or idx <= 0 or idx >= len(candles):
+                continue
+            ts = candles[idx].ts
+            if is_forbidden_iou_time(ts):
+                continue
+            oc = candles[idx].close - candles[idx].open
+            prev_oc = candles[idx - 1].close - candles[idx - 1].open
+            if abs(prev_oc) <= limit:
+                continue
+            same_sign = (oc * prev_oc) > 0
+            contribution = -oc if same_sign else oc
+            totals[offset] = totals.get(offset, 0.0) + contribution
+            details.setdefault(offset, []).append({
+                "seq": seq_val,
+                "ts": ts.strftime('%Y-%m-%d %H:%M:%S'),
+                "oc": oc,
+                "prev_oc": prev_oc,
+                "contribution": contribution,
+            })
+    return totals, details
 
 def _add_security_headers(handler: BaseHTTPRequestHandler) -> None:
     handler.send_header("X-Content-Type-Options", "nosniff")
@@ -1550,25 +1593,11 @@ class App96Handler(BaseHTTPRequestHandler):
                             )
 
                     # PrevOC-limit tabanlı total sum hesapla (sadece limit, tolerans yok)
-                    offset_totals: Dict[int, float] = {}
-                    offset_details: Dict[int, List[Dict[str, Any]]] = {}
-                    for item in report.offsets:
-                        for hit in item.hits:
-                            if abs(hit.prev_oc) <= limit_val:
-                                continue
-                            # IOU sonuçları aynı işaretli; yine de işaret kuralını uygula
-                            contribution = 0.0
-                            if hit.oc != 0:
-                                same_sign = (hit.oc * hit.prev_oc) > 0
-                                contribution = -hit.oc if same_sign else hit.oc
-                            offset_totals[item.offset] = offset_totals.get(item.offset, 0.0) + contribution
-                            offset_details.setdefault(item.offset, []).append({
-                                "seq": hit.seq_value,
-                                "ts": hit.ts.strftime('%Y-%m-%d %H:%M:%S'),
-                                "oc": hit.oc,
-                                "prev_oc": hit.prev_oc,
-                                "contribution": contribution,
-                            })
+                    offset_totals, offset_details = calculate_total_sums_for_candles(
+                        candles_entry,
+                        sequence,
+                        limit_val,
+                    )
                     file_offset_totals.append(offset_totals)
                     file_offset_details.append(offset_details)
 
