@@ -6,8 +6,6 @@ import csv
 import base64
 import json
 from typing import List, Optional, Dict, Any, Type, Set, Tuple
-from urllib.parse import urlparse, parse_qs
-from collections import OrderedDict
 
 from favicon import render_head_links, try_load_asset
 
@@ -381,8 +379,6 @@ def render_combined_pattern_panel(
     pattern_groups: List[List[List[int]]],
     meta_groups: List[Dict[str, Any]],
     allow_zero_after_start: bool,
-    lazy_stub_only: bool = False,
-    lazy_key: Optional[str] = None,
 ) -> str:
     group_count = len(pattern_groups)
     if group_count < 2:
@@ -392,43 +388,13 @@ def render_combined_pattern_panel(
         allow_zero_after_start=allow_zero_after_start,
     )
     summary_label = f"Toplu örüntüler (grup sayısı {group_count})"
-    limit_note = ""
-    if total_unique > len(combined):
-        limit_note = f" (ilk {len(combined)})"
-    info_line = f"<div><strong>Toplam birleşik örüntü:</strong> {total_unique}{limit_note}</div>"
     if total_unique == 0:
         inner = "<div style='margin-top:12px;'>Uygun birleşik örüntü bulunamadı.</div>"
-    elif lazy_stub_only and lazy_key:
-        target_id = f"combined_detail_{html.escape(lazy_key)}"
-        button = (
-            f"<button data-combined-key='{html.escape(lazy_key)}' data-target='{target_id}' "
-            "class='load-combined-btn' style='margin-top:8px;'>Detayları yükle</button>"
-        )
-        inner = (
-            "<div style='margin-top:12px;'>"
-            + info_line +
-            button +
-            f"<div id='{target_id}' style='margin-top:8px;'></div>"
-            "</div>"
-            "<script>"
-            "window.__combinedLoader=window.__combinedLoader||function(btn){"
-            "var key=btn.getAttribute('data-combined-key');"
-            "var target=btn.getAttribute('data-target');"
-            "if(!key||!target)return;"
-            "btn.disabled=true;"
-            "fetch('/iou_combined_details?key='+encodeURIComponent(key))"
-            ".then(function(r){if(!r.ok)throw new Error('detay alınamadı');return r.text();})"
-            ".then(function(html){var el=document.getElementById(target);if(el){el.innerHTML=html;}})"
-            ".catch(function(err){var el=document.getElementById(target);if(el){el.innerHTML='<div style=\"color:red;\">'+err.message+'</div>';}})"
-            ".finally(function(){btn.disabled=false;});"
-            "};"
-            "document.addEventListener('click',function(e){"
-            "var btn=e.target.closest('.load-combined-btn');"
-            "if(btn&&window.__combinedLoader){__combinedLoader(btn);}"
-            "});"
-            "</script>"
-        )
     else:
+        limit_note = ""
+        if total_unique > len(combined):
+            limit_note = f" (ilk {len(combined)})"
+        info_line = f"<div><strong>Toplam birleşik örüntü:</strong> {total_unique}{limit_note}</div>"
         flat_names: List[str] = []
         flat_joker_indices: Set[int] = set()
         flat_meta_entries: List[Dict[str, Any]] = []
@@ -735,10 +701,6 @@ def render_pattern_panel(
     return "<div class='card'><h3>Örüntüleme</h3>" + info + seq_info + last_line + "".join(lines) + "</div>"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_FILES = 50
-
-# Lazy combined-panel detail cache
-COMBINED_DETAIL_CACHE: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
-COMBINED_CACHE_LIMIT = 32
 
 
 def calculate_total_sums_for_candles(
@@ -1185,39 +1147,6 @@ class App96Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(payload)))
             self.end_headers()
             self.wfile.write(payload)
-            return
-        parsed = urlparse(self.path)
-        if parsed.path == "/iou_combined_details":
-            qs = parse_qs(parsed.query or "")
-            key = (qs.get("key") or [None])[0]
-            payload = COMBINED_DETAIL_CACHE.get(key) if key else None
-            if key and payload:
-                # LRU touch
-                try:
-                    COMBINED_DETAIL_CACHE.move_to_end(key)
-                except Exception:
-                    pass
-                try:
-                    groups = payload.get("groups") or []
-                    meta = payload.get("meta") or []
-                    allow_zero = bool(payload.get("allow_zero_after_start"))
-                    html_body = render_combined_pattern_panel(
-                        groups,
-                        meta,
-                        allow_zero_after_start=allow_zero,
-                        lazy_stub_only=False,
-                    )
-                except Exception as exc:
-                    html_body = f"<div style='color:red;'>Hata: {html.escape(str(exc))}</div>"
-            else:
-                html_body = "<div style='color:red;'>Detay bulunamadı veya süresi doldu.</div>"
-            body_bytes = html_body.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body_bytes)))
-            _add_security_headers(self)
-            self.end_headers()
-            self.wfile.write(body_bytes)
             return
         if self.path == "/":
             body = render_analyze_index()
@@ -1768,24 +1697,10 @@ class App96Handler(BaseHTTPRequestHandler):
                     updated_history.append(current_patterns)
                     updated_meta_history = pattern_meta_history[:] if pattern_meta_history else []
                     updated_meta_history.append(current_meta)
-                    combined_key = None
-                    if current_patterns:
-                        from uuid import uuid4
-                        combined_key = f"c96_{uuid4().hex}"
-                        payload = {
-                            "groups": updated_history,
-                            "meta": updated_meta_history,
-                            "allow_zero_after_start": pattern_allow_zero_after_start,
-                        }
-                        COMBINED_DETAIL_CACHE[combined_key] = payload
-                        while len(COMBINED_DETAIL_CACHE) > COMBINED_CACHE_LIMIT:
-                            COMBINED_DETAIL_CACHE.popitem(last=False)
                     combined_panel_html = render_combined_pattern_panel(
                         updated_history,
                         updated_meta_history,
                         allow_zero_after_start=pattern_allow_zero_after_start,
-                        lazy_stub_only=True,
-                        lazy_key=combined_key,
                     )
                     pattern_groups_history = updated_history
                     pattern_meta_history = updated_meta_history
