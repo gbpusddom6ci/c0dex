@@ -651,7 +651,7 @@ def load_candles_from_text(text: str, candle_cls: Type) -> List:
     open_key = pick("open", "o", "open (first)")
     high_key = pick("high", "h")
     low_key = pick("low", "l")
-    close_key = pick("close (last)", "close", "last", "c", "close last", "close(last)")
+    close_key = pick("close (last)", "close", "last", "c", "close last", "close(last)", "latest", "price", "close price", "last price")
     if not (time_key and open_key and high_key and low_key and close_key):
         raise ValueError("CSV başlıkları eksik. Gerekli: Time, Open, High, Low, Close (Last)")
 
