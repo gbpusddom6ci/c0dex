@@ -393,6 +393,7 @@ def compute_offset_alignment(
     base_idx: int,
     seq_values: List[int],
     offset: int,
+    minutes_per_step: int = MINUTES_PER_STEP,
 ) -> OffsetComputation:
 
     def next_non_dc(idx: Optional[int]) -> Optional[int]:
@@ -410,10 +411,15 @@ def compute_offset_alignment(
             first = False
         return None
 
-    start_idx, target_ts, offset_status = determine_offset_start(candles, base_idx, offset)
+    start_idx, target_ts, offset_status = determine_offset_start(
+        candles,
+        base_idx,
+        offset,
+        minutes_per_step=minutes_per_step,
+    )
     base_ts = candles[base_idx].ts.replace(second=0, microsecond=0)
     if target_ts is None:
-        target_ts = base_ts + timedelta(minutes=MINUTES_PER_STEP * offset)
+        target_ts = base_ts + timedelta(minutes=minutes_per_step * offset)
     start_ref_ts = target_ts
     hits: List[SequenceAllocation] = [SequenceAllocation(None, None, False) for _ in seq_values]
     actual_ts: Optional[datetime] = None
@@ -439,7 +445,7 @@ def compute_offset_alignment(
         delta_minutes = int((actual_ts - target_ts).total_seconds() // 60)
         if delta_minutes < 0:
             delta_minutes = 0
-        missing_steps = max(0, delta_minutes // MINUTES_PER_STEP)
+        missing_steps = max(0, delta_minutes // minutes_per_step)
         hits = compute_sequence_allocations(
             candles,
             dc_flags,
@@ -517,7 +523,7 @@ def compute_offset_alignment(
         delta_minutes = int((actual_ts - target_ts).total_seconds() // 60)
         if delta_minutes < 0:
             delta_minutes = 0
-        missing_steps = max(0, delta_minutes // MINUTES_PER_STEP)
+        missing_steps = max(0, delta_minutes // minutes_per_step)
         actual_start_count = missing_steps + 1
         seq_compute: List[int] = [actual_start_count]
         value_to_pos = {actual_start_count: 0}
@@ -694,6 +700,137 @@ def detect_iou_candles(
             filtered_hits.append(hit)
         offset.hits = filtered_hits
     return report
+
+
+@dataclass
+class PrevOCContribution:
+    seq_value: int
+    idx: int
+    ts: datetime
+    oc: float
+    prev_oc: float
+    contribution: float
+    rule: str
+    dc_flag: bool
+    used_dc: bool
+
+
+@dataclass
+class PrevOCOffsetResult:
+    offset: int
+    offset_status: str
+    target_ts: Optional[datetime]
+    actual_ts: Optional[datetime]
+    missing_steps: int
+    total: float
+    contributions: List[PrevOCContribution]
+
+
+@dataclass
+class PrevOCReport:
+    sequence: str
+    limit: float
+    base_idx: int
+    base_status: str
+    base_ts: Optional[datetime]
+    offsets: List[PrevOCOffsetResult]
+
+
+def compute_prevoc_sum_report(
+    candles: List[Candle],
+    sequence: str,
+    limit: float,
+    tolerance: float = 0.0,
+    minutes_per_step: int = MINUTES_PER_STEP,
+) -> PrevOCReport:
+    """
+    app90 'OC/PrevOC' sekmesindeki katkı mantığını uygular:
+    - Eşik: |PrevOC| >= (limit + tolerance)
+    - OC ve PrevOC zıt işaretli ise katkı +abs(OC)
+    - OC ve PrevOC aynı işaretli ise katkı -abs(OC)
+    """
+    if not candles:
+        raise ValueError("PrevOC analizi için mum verisi gerekli")
+
+    seq_key = (sequence or "S2").upper()
+    if seq_key not in SEQUENCES:
+        seq_key = "S2"
+    seq_values = SEQUENCES[seq_key][:]
+    skip_values = SKIP_VALUES.get(seq_key, {1, 5})
+
+    threshold = abs(limit)
+    tol = abs(tolerance or 0.0)
+    effective_threshold = threshold + tol
+
+    base_idx, base_status = find_start_index(candles, DEFAULT_START_TOD)
+    base_ts = candles[base_idx].ts if 0 <= base_idx < len(candles) else None
+    dc_flags = compute_dc_flags(candles)
+
+    offsets: List[PrevOCOffsetResult] = []
+    for offset in range(-3, 4):
+        alignment = compute_offset_alignment(
+            candles,
+            dc_flags,
+            base_idx,
+            seq_values,
+            offset,
+            minutes_per_step=minutes_per_step,
+        )
+        contributions: List[PrevOCContribution] = []
+        total = 0.0
+
+        for seq_val, alloc in zip(seq_values, alignment.hits):
+            if seq_val in skip_values:
+                continue
+            idx = alloc.idx
+            if idx is None or idx <= 0 or idx >= len(candles):
+                continue
+            oc = candles[idx].close - candles[idx].open
+            prev_oc = candles[idx - 1].close - candles[idx - 1].open
+            if not oc or not prev_oc:
+                continue
+            if abs(prev_oc) < effective_threshold:
+                continue
+            rule = "opposite" if oc * prev_oc < 0 else "same"
+            contribution = abs(oc)
+            if rule == "same":
+                contribution = -contribution
+            total += contribution
+            dc_flag = bool(dc_flags[idx]) if 0 <= idx < len(dc_flags) else False
+            contributions.append(
+                PrevOCContribution(
+                    seq_value=seq_val,
+                    idx=idx,
+                    ts=candles[idx].ts,
+                    oc=oc,
+                    prev_oc=prev_oc,
+                    contribution=contribution,
+                    rule=rule,
+                    dc_flag=dc_flag,
+                    used_dc=alloc.used_dc,
+                )
+            )
+
+        offsets.append(
+            PrevOCOffsetResult(
+                offset=offset,
+                offset_status=alignment.offset_status,
+                target_ts=alignment.target_ts,
+                actual_ts=alignment.actual_ts,
+                missing_steps=alignment.missing_steps,
+                total=total,
+                contributions=contributions,
+            )
+        )
+
+    return PrevOCReport(
+        sequence=seq_key,
+        limit=threshold,
+        base_idx=base_idx,
+        base_status=base_status,
+        base_ts=base_ts,
+        offsets=offsets,
+    )
 
 
 def fmt_ts(dt: Optional[datetime]) -> str:

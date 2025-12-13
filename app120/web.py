@@ -23,6 +23,7 @@ from .counter import (
     predict_time_after_n_steps,
     detect_iov_candles,
     detect_iou_candles,
+    compute_prevoc_sum_report,
 )
 from .main import (
     Candle as ConverterCandle,
@@ -730,6 +731,7 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
       <a href='/matrix' class='{ 'active' if active_tab=="matrix" else '' }'>Matrix</a>
       <a href='/iov' class='{ 'active' if active_tab=="iov" else '' }'>IOV Tarama</a>
       <a href='/iou' class='{ 'active' if active_tab=="iou" else '' }'>IOU Tarama</a>
+      <a href='/loss' class='{ 'active' if active_tab=="loss" else '' }'>loss</a>
       <a href='/converter' class='{ 'active' if active_tab=="converter" else '' }'>60→120 Converter</a>
     </nav>
     {body}
@@ -978,6 +980,76 @@ def render_iou_index() -> bytes:
     return page("app120 - IOU", body, active_tab="iou")
 
 
+def render_loss_form(
+    *,
+    default_sequence: str = "S1",
+    default_limit: float = 0.1,
+    previous_results_html_encoded: Optional[str] = None,
+) -> str:
+    seq_key = (default_sequence or "S1").strip().upper()
+    if seq_key not in SEQUENCES:
+        seq_key = "S1"
+
+    hidden_prev = ""
+    if previous_results_html_encoded:
+        hidden_prev = (
+            f"<input type='hidden' name='previous_results_html' value='{html.escape(previous_results_html_encoded)}'>"
+        )
+
+    selected_s1 = " selected" if seq_key == "S1" else ""
+    selected_s2 = " selected" if seq_key == "S2" else ""
+    selected_s3 = " selected" if seq_key == "S3" else ""
+    selected_s4 = " selected" if seq_key == "S4" else ""
+
+    return f"""
+    <div class='card'>
+      <form method='post' action='/loss' enctype='multipart/form-data'>
+        {hidden_prev}
+        <div class='row'>
+          <div>
+            <label>CSV</label>
+            <input type='file' name='csv' accept='.csv,text/csv' required multiple />
+          </div>
+          <div>
+            <label>Zaman Dilimi</label>
+            <div>120m</div>
+          </div>
+          <div>
+            <label>Dizi</label>
+            <select name='sequence'>
+              <option value='S1'{selected_s1}>S1</option>
+              <option value='S2'{selected_s2}>S2</option>
+              <option value='S3'{selected_s3}>S3</option>
+              <option value='S4'{selected_s4}>S4</option>
+            </select>
+          </div>
+          <div>
+            <label>Limit (|PrevOC|)</label>
+            <input type='number' step='0.0001' min='0' value='{html.escape(str(default_limit))}' name='limit' />
+          </div>
+          <div>
+            <label>Tolerans</label>
+            <div>0</div>
+          </div>
+        </div>
+        <div style='margin-top:12px;'>
+          <button type='submit'>Hesapla</button>
+        </div>
+      </form>
+    </div>
+    <p>
+      Mantık (app90 ile aynı): <code>|PrevOC| ≥ limit</code> ise katkı hesaplanır.
+      OC ve PrevOC zıt işaretliyse <code>+abs(OC)</code>, aynı işaretliyse <code>-abs(OC)</code>.
+      Tolerans sabit <code>0</code>. Aynı anda birden fazla CSV seçebilirsin.
+    </p>
+    """
+
+
+def render_loss_index() -> bytes:
+    body = render_loss_form()
+    return page("app120 - loss", body, active_tab="loss")
+
+
 def render_converter_index() -> bytes:
     body = """
     <div class='card'>
@@ -1057,6 +1129,8 @@ class App120Handler(BaseHTTPRequestHandler):
             body = render_iov_index()
         elif self.path == "/iou":
             body = render_iou_index()
+        elif self.path == "/loss":
+            body = render_loss_index()
         elif self.path == "/converter":
             body = render_converter_index()
         else:
@@ -1701,6 +1775,195 @@ class App120Handler(BaseHTTPRequestHandler):
                 _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page(title, body, active_tab=tab_key))
+                return
+
+            if self.path == "/loss":
+                sequence = (form.get("sequence", {}).get("value") or "S1").strip() or "S1"
+                limit_raw = (form.get("limit", {}).get("value") or "0").strip()
+
+                previous_results_html = form.get("previous_results_html", {}).get("value", "")
+                if previous_results_html:
+                    try:
+                        previous_results_html = base64.b64decode(previous_results_html.encode("ascii")).decode("utf-8")
+                    except Exception:
+                        previous_results_html = ""
+
+                try:
+                    limit_val = float(limit_raw)
+                except Exception:
+                    limit_val = 0.0
+                limit_val = abs(limit_val)
+
+                offsets_order = [-3, -2, -1, 0, 1, 2, 3]
+                aggregate_stats = {
+                    o: {"total": 0.0, "hits": 0, "pos": 0, "neg": 0}
+                    for o in offsets_order
+                }
+
+                cards: List[str] = []
+                for entry in files:
+                    name = entry.get("filename") or "dosya"
+                    candles_entry = load_counter_candles(entry)
+                    tf_est = estimate_timeframe_minutes(candles_entry)
+                    tf_est_label = f"{tf_est:.2f}m" if tf_est is not None else "-"
+                    if tf_est is None or abs(tf_est - MINUTES_PER_STEP) > 1.0:
+                        raise ValueError(f"{name}: Girdi 120 dakikalık akış gibi görünmüyor")
+
+                    try:
+                        report = compute_prevoc_sum_report(
+                            candles_entry,
+                            sequence,
+                            limit_val,
+                            0.0,
+                            minutes_per_step=MINUTES_PER_STEP,
+                        )
+                    except ValueError as exc:
+                        raise ValueError(f"{name}: {exc}")
+
+                    total_sum = sum(item.total for item in report.offsets)
+                    effective_threshold = limit_val
+
+                    info_lines = [
+                        f"<div><strong>Dosya:</strong> {html.escape(name)}</div>",
+                        f"<div><strong>Data:</strong> {len(candles_entry)} candles</div>",
+                        f"<div><strong>Range:</strong> {html.escape(candles_entry[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles_entry[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>",
+                        f"<div><strong>Girdi TZ:</strong> {html.escape(tz_label)}</div>",
+                        f"<div><strong>TF:</strong> 120m | est={html.escape(tf_est_label)}</div>",
+                        f"<div><strong>Dizi:</strong> {html.escape(report.sequence)}</div>",
+                        f"<div><strong>Limit:</strong> {limit_val:.5f}</div>",
+                        "<div><strong>Tolerans:</strong> 0</div>",
+                        f"<div><strong>Eşik (|PrevOC|):</strong> {effective_threshold:.5f}</div>",
+                        f"<div><strong>Genel toplam:</strong> {format_pip(total_sum)}</div>",
+                    ]
+
+                    summary_rows: List[str] = []
+                    detail_sections: List[str] = []
+                    for item in report.offsets:
+                        label = f"+{item.offset}" if item.offset > 0 else str(item.offset)
+                        contributions = item.contributions
+                        hit_count = len(contributions)
+                        pos_count = sum(1 for contrib in contributions if contrib.contribution > 0)
+                        neg_count = sum(1 for contrib in contributions if contrib.contribution < 0)
+                        ts_ref = item.actual_ts or item.target_ts
+                        ts_label = ts_ref.strftime("%Y-%m-%d %H:%M:%S") if ts_ref else "-"
+                        status_bits = [item.offset_status]
+                        if item.missing_steps:
+                            status_bits.append(f"missing {item.missing_steps}")
+                        status_label = ", ".join(bit for bit in status_bits if bit)
+                        summary_rows.append(
+                            f"<tr><td>{label}</td><td>{hit_count}</td><td>{pos_count}</td><td>{neg_count}</td>"
+                            f"<td>{format_pip(item.total)}</td><td>{html.escape(status_label)}</td><td>{html.escape(ts_label)}</td></tr>"
+                        )
+
+                        if contributions:
+                            detail_rows = []
+                            for contrib in contributions:
+                                ts_s = contrib.ts.strftime("%Y-%m-%d %H:%M:%S")
+                                rule_label = "Zıt (+)" if contrib.contribution > 0 else "Aynı (-)"
+                                detail_rows.append(
+                                    "<tr>"
+                                    f"<td>{contrib.seq_value}</td>"
+                                    f"<td>{contrib.idx}</td>"
+                                    f"<td>{html.escape(ts_s)}</td>"
+                                    f"<td>{format_pip(contrib.prev_oc)}</td>"
+                                    f"<td>{format_pip(contrib.oc)}</td>"
+                                    f"<td>{rule_label}</td>"
+                                    f"<td>{format_pip(contrib.contribution)}</td>"
+                                    f"<td>{'Evet' if contrib.dc_flag else 'Hayır'}</td>"
+                                    "</tr>"
+                                )
+                        else:
+                            detail_rows = ["<tr><td colspan='8'>Uygun mum bulunamadı.</td></tr>"]
+
+                        detail_table = (
+                            "<table><thead><tr><th>Seq</th><th>Index</th><th>Timestamp</th><th>PrevOC</th>"
+                            "<th>OC</th><th>Kural</th><th>Katkı</th><th>DC</th></tr></thead>"
+                            f"<tbody>{''.join(detail_rows)}</tbody></table>"
+                        )
+                        detail_sections.append(
+                            f"<details{' open' if item.offset == 0 else ''}><summary>{label} detay</summary>{detail_table}</details>"
+                        )
+
+                        agg_entry = aggregate_stats.setdefault(item.offset, {"total": 0.0, "hits": 0, "pos": 0, "neg": 0})
+                        agg_entry["total"] += item.total
+                        agg_entry["hits"] += hit_count
+                        agg_entry["pos"] += pos_count
+                        agg_entry["neg"] += neg_count
+
+                    summary_table = (
+                        "<table><thead>"
+                        "<tr><th>Offset</th><th>Hit</th><th>Zıt (+)</th><th>Aynı (-)</th><th>Toplam</th><th>Durum</th><th>Referans TS</th></tr>"
+                        "</thead><tbody>"
+                        + "".join(summary_rows)
+                        + "</tbody></table>"
+                    )
+
+                    card_html = (
+                        "<div class='card'>"
+                        f"<h3>{html.escape(name)}</h3>"
+                        + "".join(info_lines)
+                        + summary_table
+                        + "".join(detail_sections)
+                        + "</div>"
+                    )
+                    cards.append(card_html)
+
+                aggregate_rows = []
+                total_all = 0.0
+                for offset in offsets_order:
+                    stats = aggregate_stats.get(offset, {"total": 0.0, "hits": 0, "pos": 0, "neg": 0})
+                    total_all += stats["total"]
+                    label = f"+{offset}" if offset > 0 else str(offset)
+                    aggregate_rows.append(
+                        f"<tr><td>{label}</td><td>{stats['hits']}</td><td>{stats['pos']}</td><td>{stats['neg']}</td><td>{format_pip(stats['total'])}</td></tr>"
+                    )
+                aggregate_table = (
+                    "<table><thead><tr><th>Offset</th><th>Hit</th><th>Zıt (+)</th><th>Aynı (-)</th><th>Toplam</th></tr></thead>"
+                    f"<tbody>{''.join(aggregate_rows)}</tbody></table>"
+                )
+                aggregate_card = (
+                    "<div class='card'>"
+                    "<h3>Toplam Özet</h3>"
+                    f"<div><strong>Dosya sayısı:</strong> {len(files)}</div>"
+                    f"<div><strong>Genel toplam:</strong> {format_pip(total_all)}</div>"
+                    + aggregate_table
+                    + "</div>"
+                )
+
+                current_result = "".join(cards) + aggregate_card
+
+                from datetime import datetime
+                result_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+                result_section = (
+                    f"<div id='result_{result_id}' style='margin-bottom:32px; padding-bottom:24px; border-bottom:2px solid #ddd;'>"
+                    f"<h3 style='color:#0366d6; margin-bottom:16px;'>Analiz #{result_id}</h3>"
+                    f"{current_result}"
+                    f"</div>"
+                )
+
+                if previous_results_html:
+                    body_without_form = previous_results_html + result_section
+                else:
+                    body_without_form = result_section
+
+                body_encoded = base64.b64encode(body_without_form.encode("utf-8")).decode("ascii")
+                form_section = (
+                    "<hr style='margin:32px 0; border:none; border-top:2px solid #ddd;'>"
+                    "<h2 style='margin-top:24px;'>Yeni Analiz</h2>"
+                    + render_loss_form(
+                        default_sequence=sequence,
+                        default_limit=limit_val,
+                        previous_results_html_encoded=body_encoded,
+                    )
+                )
+
+                body = body_without_form + form_section
+
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                _add_security_headers(self)
+                self.end_headers()
+                self.wfile.write(page("app120 - loss", body, active_tab="loss"))
                 return
 
             if self.path == "/analyze":
