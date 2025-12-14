@@ -1878,10 +1878,21 @@ class App120Handler(BaseHTTPRequestHandler):
                         detail_table = (
                             "<table><thead><tr><th>Seq</th><th>Index</th><th>Timestamp</th><th>PrevOC</th>"
                             "<th>OC</th><th>Kural</th><th>Katkı</th><th>DC</th></tr></thead>"
-                            f"<tbody>{''.join(detail_rows)}</tbody></table>"
+                            f"<tbody>{''.join(detail_rows)}</tbody>"
+                            "<tfoot>"
+                            "<tr>"
+                            "<td colspan='6'><strong>Ara Toplam</strong></td>"
+                            f"<td><strong>{format_pip(item.total)}</strong></td>"
+                            "<td></td>"
+                            "</tr>"
+                            "</tfoot>"
+                            "</table>"
+                        )
+                        detail_summary = (
+                            f"{label} detay — Hit {hit_count}, Zıt {pos_count}, Aynı {neg_count}, Toplam {format_pip(item.total)}"
                         )
                         detail_sections.append(
-                            f"<details{' open' if item.offset == 0 else ''}><summary>{label} detay</summary>{detail_table}</details>"
+                            f"<details{' open' if item.offset == 0 else ''}><summary>{html.escape(detail_summary)}</summary>{detail_table}</details>"
                         )
 
                         agg_entry = aggregate_stats.setdefault(item.offset, {"total": 0.0, "hits": 0, "pos": 0, "neg": 0})
