@@ -151,7 +151,7 @@ def find_sunday_dates(candles: List[Candle]) -> List[date]:
 
 
 def should_exclude_for_signals(ts: datetime, sunday_dates: Set[date]) -> bool:
-    tod = ts.time()
+    tod = ts.time().replace(second=0, microsecond=0)
     if tod in FORBIDDEN_TIMES_ALWAYS:
         return True
     if tod in FORBIDDEN_TIMES_NON_SUNDAY and ts.date() not in sunday_dates:
@@ -688,7 +688,7 @@ def detect_iou_candles(
             # IOU: Pazar günü hiçbir mum IOU olamaz
             if hit.ts.weekday() == 6:
                 continue
-            tod = hit.ts.time()
+            tod = hit.ts.time().replace(second=0, microsecond=0)
             # IOU: 16:00 her gün dışlanır
             if tod == dtime(hour=16, minute=0):
                 continue
@@ -785,6 +785,9 @@ def compute_prevoc_sum_report(
             idx = alloc.idx
             if idx is None or idx <= 0 or idx >= len(candles):
                 continue
+            ts = candles[idx].ts
+            if ts.hour == 20 and ts.minute == 0:
+                continue
             oc = candles[idx].close - candles[idx].open
             prev_oc = candles[idx - 1].close - candles[idx - 1].open
             if not oc or not prev_oc:
@@ -801,7 +804,7 @@ def compute_prevoc_sum_report(
                 PrevOCContribution(
                     seq_value=seq_val,
                     idx=idx,
-                    ts=candles[idx].ts,
+                    ts=ts,
                     oc=oc,
                     prev_oc=prev_oc,
                     contribution=contribution,
