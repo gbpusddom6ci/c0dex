@@ -40,7 +40,7 @@ from typing import Tuple
 
 from news_loader import find_news_for_timestamp
 
-IOU_TOLERANCE = 0.005
+IOU_TOLERANCE = 0.0
 
 # --- Örüntüleme Yardımcıları ---
 
@@ -947,8 +947,8 @@ def render_iou_form() -> str:
             <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
           </div>
           <div>
-            <label>± Tolerans</label>
-            <input type='number' step='0.0001' min='0' value='0.005' name='tolerance' />
+            <label>Tolerans</label>
+            <div>0</div>
           </div>
         </div>
         <div class='row' style='margin-top:12px; gap:32px;'>
@@ -1371,16 +1371,8 @@ class App120Handler(BaseHTTPRequestHandler):
                         elif len(pattern_meta_history) > len(pattern_groups_history):
                             pattern_meta_history = pattern_meta_history[:len(pattern_groups_history)]
                 
-                tolerance_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
-                if metric_label == "IOU":
-                    try:
-                        tolerance_val = float(tolerance_raw)
-                    except Exception:
-                        tolerance_val = IOU_TOLERANCE
-                    tolerance_val = abs(tolerance_val)
-                else:
-                    tolerance_val = 0.0
-                limit_margin = limit_val + tolerance_val
+                tolerance_val = 0.0
+                limit_margin = limit_val
 
                 # Alternatif (2. adım) dosya içeriği: csv_b64_{i} + csv_name_{i}
                 b64_entries: List[Dict[str, Any]] = []
@@ -1428,7 +1420,6 @@ class App120Handler(BaseHTTPRequestHandler):
                         f"<input type='hidden' name='sequence' value='{html.escape(sequence_val)}'>",
                         f"<input type='hidden' name='input_tz' value='{html.escape(tz_val)}'>",
                         f"<input type='hidden' name='limit' value='{html.escape(str(limit_val))}'>",
-                        f"<input type='hidden' name='tolerance' value='{html.escape(str(tolerance_val))}'>",
                         _hidden_bool("xyz_mode", xyz_enabled),
                         _hidden_bool("xyz_summary", summary_mode),
                         _hidden_bool("pattern_mode", pattern_enabled),
@@ -1597,8 +1588,6 @@ class App120Handler(BaseHTTPRequestHandler):
                                 rows_html.append("<tr>" + "".join(cells) + "</tr>")
 
                     filename = entry.get("filename") or "uploaded.csv"
-                    tolerance_line = f"<div><strong>Tolerans:</strong> {tolerance_val:.5f}</div>" if metric_label == "IOU" else ""
-
                     xyz_text = "-"
                     if metric_label == "IOU":
                         base_offsets = [-3, -2, -1, 0, 1, 2, 3]
@@ -1639,7 +1628,6 @@ class App120Handler(BaseHTTPRequestHandler):
                             f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
                             f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
                             f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
-                            f"{tolerance_line}"
                             f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
                             f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
                             f"<div><strong>Offset {metric_label} sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"

@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple, Dict, Callable, Set
 
 MINUTES_PER_STEP = 120
 DEFAULT_START_TOD = dtime(hour=18, minute=0)
-IOU_TOLERANCE = 0.005
+IOU_TOLERANCE = 0.0
 FORBIDDEN_TIMES_ALWAYS = {
     # DC için: 18:00 her gün DC değildir (her zaman dışlanır)
     dtime(hour=18, minute=0),

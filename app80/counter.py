@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple, Dict, Callable
 
 MINUTES_PER_STEP = 80
 DEFAULT_START_TOD = dtime(hour=18, minute=0)
-IOU_TOLERANCE = 0.005
+IOU_TOLERANCE = 0.0
 FORBIDDEN_TIMES_ALWAYS = {
     dtime(hour=18, minute=0),
 }

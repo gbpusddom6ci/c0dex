@@ -28,7 +28,7 @@ from datetime import timedelta
 from news_loader import find_news_for_timestamp
 
 MINUTES_PER_STEP = 60
-IOU_TOLERANCE = 0.005
+IOU_TOLERANCE = 0.0
 
 # --- Örüntüleme Yardımcıları ---
 
@@ -609,8 +609,8 @@ def render_iou_form() -> str:
             <input type='number' step='0.0001' min='0' value='0.1' name='limit' />
           </div>
           <div>
-            <label>± Tolerans</label>
-            <input type='number' step='0.0001' min='0' value='0.005' name='tolerance' />
+            <label>Tolerans</label>
+            <div>0</div>
           </div>
         </div>
         <div class='row' style='margin-top:12px; gap:32px;'>
@@ -961,18 +961,13 @@ class AppHandler(BaseHTTPRequestHandler):
             tz_value = (form.get("input_tz", {}).get("value") or "UTC-4").strip()
             sequence = (form.get("sequence", {}).get("value") or "S1").strip()
             limit_raw = (form.get("limit", {}).get("value") or "0").strip()
-            tol_raw = (form.get("tolerance", {}).get("value") or str(IOU_TOLERANCE)).strip()
             try:
                 limit_val = float(limit_raw)
             except Exception:
                 limit_val = 0.0
             limit_val = abs(limit_val)
-            try:
-                tolerance_val = float(tol_raw)
-            except Exception:
-                tolerance_val = IOU_TOLERANCE
-            tolerance_val = abs(tolerance_val)
-            limit_margin = limit_val + tolerance_val
+            tolerance_val = 0.0
+            limit_margin = limit_val
             xyz_enabled = "xyz_mode" in form
             summary_mode = "xyz_summary" in form
             pattern_enabled = "pattern_mode" in form
@@ -1030,7 +1025,6 @@ class AppHandler(BaseHTTPRequestHandler):
                     f"<input type='hidden' name='sequence' value='{html.escape(sequence)}'>",
                     f"<input type='hidden' name='input_tz' value='{html.escape(tz_value)}'>",
                     f"<input type='hidden' name='limit' value='{html.escape(str(limit_val))}'>",
-                    f"<input type='hidden' name='tolerance' value='{html.escape(str(tolerance_val))}'>",
                     _hidden_bool("xyz_mode", xyz_enabled),
                     _hidden_bool("xyz_summary", summary_mode),
                     _hidden_bool("pattern_mode", pattern_enabled),
@@ -1231,7 +1225,6 @@ class AppHandler(BaseHTTPRequestHandler):
                         f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
                         f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
                         f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
-                        f"<div><strong>Tolerans:</strong> {tolerance_val:.5f}</div>"
                         f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
                         f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
                         f"<div><strong>Offset IOU sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"

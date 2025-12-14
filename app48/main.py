@@ -20,7 +20,7 @@ SEQUENCES: Dict[str, List[int]] = {
     "S2": [1, 5, 9, 17, 25, 37, 49, 65, 81, 101, 121, 145, 169, 197, 225, 257],
 }
 
-IOU_TOLERANCE = 0.005
+IOU_TOLERANCE = 0.0
 
 
 def normalize_key(name: str) -> str:
