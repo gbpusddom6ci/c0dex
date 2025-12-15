@@ -62,46 +62,27 @@ def _sign(v: int) -> int:
 def _allowed_values_for_mirror_state(state: Dict[str, Any], choices: Set[int]) -> List[int]:
     prev = state.get("prev")
     seq = state.get("seq") or []
-    wave_level = int(state.get("wave_level") or 0)
-    wave_dir = state.get("wave_dir")
-    wave_sign = state.get("wave_sign")
-    last_sign = state.get("last_wave_sign")
+    phases = state.get("phases")
+
+    cycle = [0, 1, 2, 3, 2, 1, 0, -1, -2, -3, -2, -1]
+    cycle_len = len(cycle)
 
     allowed: Set[int] = set()
     if not seq:
-        for v in (0, -1, 1):
-            if v in choices:
-                allowed.add(v)
-    elif wave_level == 0:
-        if last_sign in (-1, 1):
-            v = int(-last_sign)
-            if v in choices:
-                allowed.add(v)
-        else:
-            for v in (-1, 1):
-                if v in choices:
-                    allowed.add(v)
-    elif wave_level == 1:
-        if wave_dir == "up" and wave_sign in (-1, 1):
-            v = int(wave_sign) * 2
-            if v in choices:
-                allowed.add(v)
-        elif wave_dir == "down":
-            if 0 in choices:
-                allowed.add(0)
-    elif wave_level == 2:
-        if wave_dir == "up" and wave_sign in (-1, 1):
-            v = int(wave_sign) * 3
-            if v in choices:
-                allowed.add(v)
-        elif wave_dir == "down" and wave_sign in (-1, 1):
-            v = int(wave_sign) * 1
-            if v in choices:
-                allowed.add(v)
-    elif wave_level == 3 and wave_sign in (-1, 1):
-        v = int(wave_sign) * 2
-        if v in choices:
-            allowed.add(v)
+        allowed = set(choices)
+    else:
+        if not isinstance(phases, list):
+            phases = []
+        if not phases and prev is not None:
+            phases = [i for i, v in enumerate(cycle) if v == int(prev)]
+        for p in phases:
+            try:
+                p_int = int(p)
+            except Exception:
+                continue
+            nxt = cycle[(p_int + 1) % cycle_len]
+            if nxt in choices:
+                allowed.add(nxt)
 
     if prev is not None and prev in allowed:
         allowed.discard(prev)
@@ -111,50 +92,38 @@ def _allowed_values_for_mirror_state(state: Dict[str, Any], choices: Set[int]) -
 
 
 def _advance_mirror_state(state: Dict[str, Any], value: int) -> Dict[str, Any]:
-    last_sign = state.get("last_wave_sign")
-    wave_level = int(state.get("wave_level") or 0)
-    wave_dir = state.get("wave_dir")
-    wave_sign = state.get("wave_sign")
+    prev = state.get("prev")
+    seq = list(state.get("seq") or [])
+    phases = state.get("phases")
 
-    ns = {
+    cycle = [0, 1, 2, 3, 2, 1, 0, -1, -2, -3, -2, -1]
+    cycle_len = len(cycle)
+
+    if not isinstance(phases, list):
+        phases = []
+
+    if not seq:
+        new_phases = [i for i, v in enumerate(cycle) if v == int(value)]
+    else:
+        if not phases and prev is not None:
+            phases = [i for i, v in enumerate(cycle) if v == int(prev)]
+        new_phases_set: Set[int] = set()
+        for p in phases:
+            try:
+                p_int = int(p)
+            except Exception:
+                continue
+            n_idx = (p_int + 1) % cycle_len
+            if cycle[n_idx] == int(value):
+                new_phases_set.add(n_idx)
+        new_phases = sorted(new_phases_set)
+
+    return {
         "kind": "mirror",
-        "wave_level": wave_level,
-        "wave_dir": wave_dir,
-        "wave_sign": wave_sign,
-        "last_wave_sign": last_sign,
+        "phases": new_phases,
         "prev": value,
-        "seq": list(state.get("seq") or []) + [value],
+        "seq": seq + [value],
     }
-
-    if value == 0:
-        if wave_level == 1 and wave_dir == "down" and wave_sign in (-1, 1):
-            ns["last_wave_sign"] = int(wave_sign)
-        ns["wave_level"] = 0
-        ns["wave_dir"] = None
-        ns["wave_sign"] = None
-        return ns
-
-    sign = 1 if value > 0 else -1
-    if wave_level == 0:
-        ns["wave_sign"] = sign
-        ns["wave_level"] = 1
-        ns["wave_dir"] = "up"
-    elif wave_level == 1 and wave_dir == "up":
-        ns["wave_level"] = 2
-        ns["wave_dir"] = "up"
-    elif wave_level == 2 and wave_dir == "up":
-        ns["wave_level"] = 3
-        ns["wave_dir"] = "down"
-    elif wave_level == 3:
-        ns["wave_level"] = 2
-        ns["wave_dir"] = "down"
-    elif wave_level == 2 and wave_dir == "down":
-        ns["wave_level"] = 1
-        ns["wave_dir"] = "down"
-
-    if ns.get("wave_sign") is None:
-        ns["wave_sign"] = sign
-    return ns
 
 
 def _allowed_values_for_state(state: Dict[str, Any], choices: Set[int], allow_zero_after_start: bool) -> List[int]:
@@ -288,10 +257,7 @@ def _initial_pattern_state(*, mirror_mode: bool = False) -> Dict[str, Any]:
     if mirror_mode:
         return {
             "kind": "mirror",
-            "wave_level": 0,
-            "wave_dir": None,
-            "wave_sign": None,
-            "last_wave_sign": None,
+            "phases": [],
             "prev": None,
             "seq": [],
         }
