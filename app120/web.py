@@ -350,6 +350,7 @@ def render_combined_pattern_panel(
         info_line = f"<div><strong>Toplam birleşik örüntü:</strong> {total_unique}{limit_note}</div>"
         flat_names: List[str] = []
         flat_joker_indices: Set[int] = set()
+        flat_loss_totals: List[Optional[List[Optional[float]]]] = []
         cursor = 0
         group_widths = [_infer_pattern_group_width(group) for group in pattern_groups]
         for idx in range(group_count):
@@ -374,6 +375,37 @@ def render_combined_pattern_panel(
                     except Exception:
                         continue
                     flat_joker_indices.add(cursor + j_int)
+
+            raw_loss = meta.get("loss_totals") if isinstance(meta, dict) else None
+            loss_rows: List[Optional[List[Optional[float]]]] = []
+            if isinstance(raw_loss, list):
+                for row in raw_loss:
+                    if not isinstance(row, list):
+                        loss_rows.append(None)
+                        continue
+                    vals: List[Optional[float]] = []
+                    for v in row[:7]:
+                        try:
+                            vals.append(float(v))
+                        except Exception:
+                            vals.append(None)
+                    if len(vals) < 7:
+                        vals.extend([None] * (7 - len(vals)))
+                    loss_rows.append(vals)
+
+            if length_for_cursor:
+                if width:
+                    if len(loss_rows) < width:
+                        loss_rows.extend([None] * (width - len(loss_rows)))
+                    elif len(loss_rows) > width:
+                        loss_rows = loss_rows[:width]
+                else:
+                    if len(loss_rows) < length_for_cursor:
+                        loss_rows.extend([None] * (length_for_cursor - len(loss_rows)))
+                    elif len(loss_rows) > length_for_cursor:
+                        loss_rows = loss_rows[:length_for_cursor]
+                flat_loss_totals.extend(loss_rows if loss_rows else [None] * length_for_cursor)
+
             cursor += length_for_cursor
         grouped: Dict[int, List[List[int]]] = {}
         group_order: List[int] = []
@@ -386,10 +418,31 @@ def render_combined_pattern_panel(
                 group_order.append(start_val)
             grouped[start_val].append(seq)
 
+        def _pattern_loss_total(seq: List[int]) -> Optional[float]:
+            if not flat_loss_totals:
+                return None
+            if len(seq) > len(flat_loss_totals):
+                return None
+            total = 0.0
+            for pos, off in enumerate(seq):
+                row = flat_loss_totals[pos]
+                if row is None:
+                    return None
+                idx = int(off) + 3
+                if idx < 0 or idx >= len(row):
+                    return None
+                v = row[idx]
+                if v is None:
+                    return None
+                total += float(v)
+            return total
+
         def _render_group(patterns: List[List[int]]) -> str:
             pattern_highlights: List[Set[int]] = [
                 _find_mirror_chain_highlights(seq) for seq in patterns
             ]
+            losses = [_pattern_loss_total(seq) for seq in patterns]
+            use_losses = any(v is not None for v in losses)
             return render_pattern_panel(
                 [],
                 allow_zero_after_start=allow_zero_after_start,
@@ -398,6 +451,7 @@ def render_combined_pattern_panel(
                 sequence_name=None,
                 precomputed_patterns=patterns,
                 highlight_positions=pattern_highlights,
+                pattern_line_losses=losses if use_losses else None,
             )
 
         grouped_lines: List[str] = []
@@ -464,6 +518,7 @@ def render_pattern_panel(
     sequence_name: Optional[str] = None,
     precomputed_patterns: Optional[List[List[int]]] = None,
     highlight_positions: Optional[List[Set[int]]] = None,
+    pattern_line_losses: Optional[List[Optional[float]]] = None,
 ) -> str:
     patterns = (
         precomputed_patterns
@@ -580,7 +635,11 @@ def render_pattern_panel(
         opts = _allowed_values_for_state(st, domain, allow_zero_after_start)
         cont = ", ".join(_fmt_off(v) for v in opts) if opts else "-"
         number_html = f"<span style='display:inline-block; min-width:1.8em; font-weight:bold;'>{idx_line + 1}.</span>"
-        lines.append(f"<div class='pat-line'>{number_html} {label} (devam: {html.escape(cont)})</div>")
+        loss_html = ""
+        if pattern_line_losses is not None and idx_line < len(pattern_line_losses):
+            loss_val = pattern_line_losses[idx_line]
+            loss_html = f" <span style='color:#555;'>loss: {html.escape(format_pip(loss_val))}</span>"
+        lines.append(f"<div class='pat-line'>{number_html} {label} (devam: {html.escape(cont)}){loss_html}</div>")
     # Son değerlerin özeti (benzersiz, sıralı)
     last_vals = [seq[-1] for seq in patterns if seq]
     order = { -3:0, -2:1, -1:2, 0:3, 1:4, 2:5, 3:6 }
@@ -1360,10 +1419,39 @@ class App120Handler(BaseHTTPRequestHandler):
                                             continue
                                 else:
                                     joker_out = []
+                                seq_out = ""
+                                seq_raw = meta.get("sequence")
+                                if isinstance(seq_raw, str):
+                                    seq_out = seq_raw.strip()
+                                limit_out: Optional[float] = None
+                                limit_raw = meta.get("limit")
+                                try:
+                                    if limit_raw is not None:
+                                        limit_out = float(limit_raw)
+                                except Exception:
+                                    limit_out = None
+                                loss_raw = meta.get("loss_totals")
+                                loss_out: List[List[Optional[float]]] = []
+                                if isinstance(loss_raw, list):
+                                    for row in loss_raw:
+                                        if not isinstance(row, list):
+                                            continue
+                                        vals: List[Optional[float]] = []
+                                        for v in row[:7]:
+                                            try:
+                                                vals.append(float(v))
+                                            except Exception:
+                                                vals.append(None)
+                                        if len(vals) < 7:
+                                            vals.extend([None] * (7 - len(vals)))
+                                        loss_out.append(vals)
                                 pattern_meta_history.append(
                                     {
                                         "file_names": names_out,
                                         "joker_indices": joker_out,
+                                        "sequence": seq_out,
+                                        "limit": limit_out,
+                                        "loss_totals": loss_out,
                                     }
                                 )
                         if len(pattern_meta_history) < len(pattern_groups_history):
@@ -1493,12 +1581,26 @@ class App120Handler(BaseHTTPRequestHandler):
                 summary_entries: List[Dict[str, Any]] = []
                 all_xyz_sets: List[Set[int]] = []
                 all_file_names: List[str] = []
+                loss_totals_for_files: List[List[Optional[float]]] = []
+                collect_branch_loss = bool(metric_label == "IOU" and pattern_enabled)
                 for entry in effective_entries:
                     candles = load_counter_candles(entry)
                     if metric_label == "IOU":
                         report = detector(candles, sequence, limit_val, tolerance=tolerance_val)
                     else:
                         report = detector(candles, sequence, limit_val)
+                    if collect_branch_loss:
+                        loss_report = compute_prevoc_sum_report(
+                            candles,
+                            report.sequence,
+                            report.limit,
+                            0.0,
+                            minutes_per_step=MINUTES_PER_STEP,
+                        )
+                        totals_by_offset = {o.offset: o.total for o in loss_report.offsets}
+                        loss_totals_for_files.append(
+                            [totals_by_offset.get(off) for off in (-3, -2, -1, 0, 1, 2, 3)]
+                        )
 
                     offset_statuses = []
                     offset_counts = []
@@ -1657,7 +1759,11 @@ class App120Handler(BaseHTTPRequestHandler):
                     current_meta = {
                         "file_names": all_file_names[:],
                         "joker_indices": sorted(joker_indices) if joker_indices else [],
+                        "sequence": sequence,
+                        "limit": limit_val,
                     }
+                    if collect_branch_loss and loss_totals_for_files:
+                        current_meta["loss_totals"] = loss_totals_for_files
                     pattern_panel_html = render_pattern_panel(
                         all_xyz_sets,
                         allow_zero_after_start=pattern_allow_zero_after_start,
