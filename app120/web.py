@@ -58,7 +58,108 @@ def _sign(v: int) -> int:
         return -1
     return 0
 
+
+def _allowed_values_for_mirror_state(state: Dict[str, Any], choices: Set[int]) -> List[int]:
+    prev = state.get("prev")
+    seq = state.get("seq") or []
+    wave_level = int(state.get("wave_level") or 0)
+    wave_dir = state.get("wave_dir")
+    wave_sign = state.get("wave_sign")
+    last_sign = state.get("last_wave_sign")
+
+    allowed: Set[int] = set()
+    if not seq:
+        for v in (0, -1, 1):
+            if v in choices:
+                allowed.add(v)
+    elif wave_level == 0:
+        if last_sign in (-1, 1):
+            v = int(-last_sign)
+            if v in choices:
+                allowed.add(v)
+        else:
+            for v in (-1, 1):
+                if v in choices:
+                    allowed.add(v)
+    elif wave_level == 1:
+        if wave_dir == "up" and wave_sign in (-1, 1):
+            v = int(wave_sign) * 2
+            if v in choices:
+                allowed.add(v)
+        elif wave_dir == "down":
+            if 0 in choices:
+                allowed.add(0)
+    elif wave_level == 2:
+        if wave_dir == "up" and wave_sign in (-1, 1):
+            v = int(wave_sign) * 3
+            if v in choices:
+                allowed.add(v)
+        elif wave_dir == "down" and wave_sign in (-1, 1):
+            v = int(wave_sign) * 1
+            if v in choices:
+                allowed.add(v)
+    elif wave_level == 3 and wave_sign in (-1, 1):
+        v = int(wave_sign) * 2
+        if v in choices:
+            allowed.add(v)
+
+    if prev is not None and prev in allowed:
+        allowed.discard(prev)
+
+    order = {-3: 0, -2: 1, -1: 2, 0: 3, 1: 4, 2: 5, 3: 6}
+    return sorted(list(allowed), key=lambda v: order.get(v, 99))
+
+
+def _advance_mirror_state(state: Dict[str, Any], value: int) -> Dict[str, Any]:
+    last_sign = state.get("last_wave_sign")
+    wave_level = int(state.get("wave_level") or 0)
+    wave_dir = state.get("wave_dir")
+    wave_sign = state.get("wave_sign")
+
+    ns = {
+        "kind": "mirror",
+        "wave_level": wave_level,
+        "wave_dir": wave_dir,
+        "wave_sign": wave_sign,
+        "last_wave_sign": last_sign,
+        "prev": value,
+        "seq": list(state.get("seq") or []) + [value],
+    }
+
+    if value == 0:
+        if wave_level == 1 and wave_dir == "down" and wave_sign in (-1, 1):
+            ns["last_wave_sign"] = int(wave_sign)
+        ns["wave_level"] = 0
+        ns["wave_dir"] = None
+        ns["wave_sign"] = None
+        return ns
+
+    sign = 1 if value > 0 else -1
+    if wave_level == 0:
+        ns["wave_sign"] = sign
+        ns["wave_level"] = 1
+        ns["wave_dir"] = "up"
+    elif wave_level == 1 and wave_dir == "up":
+        ns["wave_level"] = 2
+        ns["wave_dir"] = "up"
+    elif wave_level == 2 and wave_dir == "up":
+        ns["wave_level"] = 3
+        ns["wave_dir"] = "down"
+    elif wave_level == 3:
+        ns["wave_level"] = 2
+        ns["wave_dir"] = "down"
+    elif wave_level == 2 and wave_dir == "down":
+        ns["wave_level"] = 1
+        ns["wave_dir"] = "down"
+
+    if ns.get("wave_sign") is None:
+        ns["wave_sign"] = sign
+    return ns
+
+
 def _allowed_values_for_state(state: Dict[str, Any], choices: Set[int], allow_zero_after_start: bool) -> List[int]:
+    if state.get("kind") == "mirror":
+        return _allowed_values_for_mirror_state(state, choices)
     prev = state.get("prev")
     mode = state.get("mode")  # 'free', 'after_zero', 'triple', 'need_zero'
     sign = state.get("sign")
@@ -108,6 +209,8 @@ def _allowed_values_for_state(state: Dict[str, Any], choices: Set[int], allow_ze
 
 
 def _advance_state(state: Dict[str, Any], value: int, step_idx: int, allow_zero_after_start: bool) -> Dict[str, Any]:
+    if state.get("kind") == "mirror":
+        return _advance_mirror_state(state, value)
     # Kopya oluştur
     ns = {
         "mode": state.get("mode"),
@@ -181,8 +284,19 @@ def _advance_state(state: Dict[str, Any], value: int, step_idx: int, allow_zero_
 PATTERN_DOMAIN = {-3, -2, -1, 0, 1, 2, 3}
 
 
-def _initial_pattern_state() -> Dict[str, Any]:
+def _initial_pattern_state(*, mirror_mode: bool = False) -> Dict[str, Any]:
+    if mirror_mode:
+        return {
+            "kind": "mirror",
+            "wave_level": 0,
+            "wave_dir": None,
+            "wave_sign": None,
+            "last_wave_sign": None,
+            "prev": None,
+            "seq": [],
+        }
     return {
+        "kind": "classic",
         "mode": "free",
         "sign": None,
         "dir": None,
@@ -230,12 +344,13 @@ def _infer_pattern_group_width(pattern_group: List[List[int]]) -> int:
 def build_chained_pattern_sequences(
     pattern_groups: List[List[List[int]]],
     allow_zero_after_start: bool,
+    mirror_mode: bool = False,
     max_paths: Optional[int] = PATTERN_MAX_PATHS,
     beam_width: Optional[int] = PATTERN_BEAM_WIDTH,
 ) -> Tuple[List[List[int]], int]:
     if not pattern_groups:
         return [], 0
-    states: List[Dict[str, Any]] = [_initial_pattern_state()]
+    states: List[Dict[str, Any]] = [_initial_pattern_state(mirror_mode=mirror_mode)]
     for group in pattern_groups:
         next_states: List[Dict[str, Any]] = []
         for st in states:
@@ -332,6 +447,7 @@ def render_combined_pattern_panel(
     pattern_groups: List[List[List[int]]],
     meta_groups: List[Dict[str, Any]],
     allow_zero_after_start: bool,
+    mirror_mode: bool = False,
 ) -> str:
     group_count = len(pattern_groups)
     if group_count < 2:
@@ -339,6 +455,7 @@ def render_combined_pattern_panel(
     combined, total_unique = build_chained_pattern_sequences(
         pattern_groups,
         allow_zero_after_start=allow_zero_after_start,
+        mirror_mode=mirror_mode,
     )
     summary_label = f"Toplu örüntüler (grup sayısı {group_count})"
     if total_unique == 0:
@@ -446,6 +563,7 @@ def render_combined_pattern_panel(
             return render_pattern_panel(
                 [],
                 allow_zero_after_start=allow_zero_after_start,
+                mirror_mode=mirror_mode,
                 file_names=flat_names if flat_names else None,
                 joker_indices=flat_joker_indices if flat_joker_indices else None,
                 sequence_name=None,
@@ -477,13 +595,14 @@ def render_combined_pattern_panel(
 def build_patterns_from_xyz_lists(
     xyz_sets: List[Set[int]],
     allow_zero_after_start: bool,
+    mirror_mode: bool = False,
     max_paths: Optional[int] = PATTERN_MAX_PATHS,
     beam_width: Optional[int] = PATTERN_BEAM_WIDTH,
 ) -> List[List[int]]:
     if not xyz_sets:
         return []
     # Başlangıç durumu
-    states: List[Dict[str, Any]] = [_initial_pattern_state()]
+    states: List[Dict[str, Any]] = [_initial_pattern_state(mirror_mode=mirror_mode)]
     for idx, choices in enumerate(xyz_sets):
         next_states: List[Dict[str, Any]] = []
         for st in states:
@@ -513,6 +632,7 @@ def build_patterns_from_xyz_lists(
 def render_pattern_panel(
     xyz_sets: List[Set[int]],
     allow_zero_after_start: bool,
+    mirror_mode: bool = False,
     file_names: Optional[List[str]] = None,
     joker_indices: Optional[Set[int]] = None,
     sequence_name: Optional[str] = None,
@@ -523,20 +643,16 @@ def render_pattern_panel(
     patterns = (
         precomputed_patterns
         if precomputed_patterns is not None
-        else build_patterns_from_xyz_lists(xyz_sets, allow_zero_after_start=allow_zero_after_start)
+        else build_patterns_from_xyz_lists(
+            xyz_sets,
+            allow_zero_after_start=allow_zero_after_start,
+            mirror_mode=mirror_mode,
+        )
     )
     if not patterns:
         return "<div class='card'><h3>Örüntüleme</h3><div>Örüntü bulunamadı.</div></div>"
     def _build_state_for_seq(seq: List[int]) -> Dict[str, Any]:
-        st: Dict[str, Any] = {
-            "mode": "free",
-            "sign": None,
-            "dir": None,
-            "pos": None,
-            "allow_zero_next": False,
-            "prev": None,
-            "seq": [],
-        }
+        st: Dict[str, Any] = _initial_pattern_state(mirror_mode=mirror_mode)
         for i, v in enumerate(seq):
             st = _advance_state(st, v, i, allow_zero_after_start)
         return st
@@ -1023,6 +1139,10 @@ def render_iou_form() -> str:
             <input type='checkbox' name='pattern_mode' />
             <span>Örüntüleme</span>
           </label>
+          <label style='display:flex; align-items:center; gap:8px;'>
+            <input type='checkbox' name='pattern_mirror_mode' />
+            <span>Ayna örüntü (0, +1,+2,+3,+2,+1, 0, -1,-2,-3,-2,-1, 0...)</span>
+          </label>
         </div>
         <div style='margin-top:12px;'>
           <button type='submit'>IOU Tara</button>
@@ -1354,6 +1474,7 @@ class App120Handler(BaseHTTPRequestHandler):
                 xyz_enabled = metric_label == "IOU" and "xyz_mode" in form
                 summary_mode = metric_label == "IOU" and "xyz_summary" in form
                 pattern_enabled = metric_label == "IOU" and "pattern_mode" in form
+                pattern_mirror_mode = metric_label == "IOU" and "pattern_mirror_mode" in form
                 confirm_iou = metric_label == "IOU" and "confirm_iou" in form
                 
                 # Önceki sonuçları al (eğer varsa) - sadece IOU için
@@ -1511,6 +1632,7 @@ class App120Handler(BaseHTTPRequestHandler):
                         _hidden_bool("xyz_mode", xyz_enabled),
                         _hidden_bool("xyz_summary", summary_mode),
                         _hidden_bool("pattern_mode", pattern_enabled),
+                        _hidden_bool("pattern_mirror_mode", pattern_mirror_mode),
                         "<input type='hidden' name='confirm_iou' value='1'>",
                     ]
                     
@@ -1755,6 +1877,7 @@ class App120Handler(BaseHTTPRequestHandler):
                     current_patterns = build_patterns_from_xyz_lists(
                         all_xyz_sets,
                         allow_zero_after_start=pattern_allow_zero_after_start,
+                        mirror_mode=pattern_mirror_mode,
                     )
                     current_meta = {
                         "file_names": all_file_names[:],
@@ -1767,6 +1890,7 @@ class App120Handler(BaseHTTPRequestHandler):
                     pattern_panel_html = render_pattern_panel(
                         all_xyz_sets,
                         allow_zero_after_start=pattern_allow_zero_after_start,
+                        mirror_mode=pattern_mirror_mode,
                         file_names=all_file_names,
                         joker_indices=joker_indices,
                         sequence_name=sequence,
@@ -1780,6 +1904,7 @@ class App120Handler(BaseHTTPRequestHandler):
                         updated_history,
                         updated_meta_history,
                         allow_zero_after_start=pattern_allow_zero_after_start,
+                        mirror_mode=pattern_mirror_mode,
                     )
                     pattern_groups_history = updated_history
                     pattern_meta_history = updated_meta_history
@@ -1834,6 +1959,7 @@ class App120Handler(BaseHTTPRequestHandler):
                             {
                                 "groups": pattern_groups_history,
                                 "allow_zero_after_start": pattern_allow_zero_after_start,
+                                "mirror_mode": pattern_mirror_mode,
                                 "meta": pattern_meta_history,
                             },
                             separators=(",", ":"),
