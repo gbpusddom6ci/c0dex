@@ -64,8 +64,25 @@ def _allowed_values_for_mirror_state(state: Dict[str, Any], choices: Set[int]) -
     seq = state.get("seq") or []
     phases = state.get("phases")
 
-    cycle = [0, 1, 2, 3, 2, 1, 0, -1, -2, -3, -2, -1]
-    cycle_len = len(cycle)
+    # "Ayna örüntü" = 0, (±1,±2,±3,±2,±1), 0, ... ; her 0'dan sonra işaret serbest.
+    # Bunu deterministik döngü yerine küçük bir NFA ile temsil ediyoruz.
+    # phase = bu grafikteki olası düğümler kümesi.
+    nodes = [
+        {"v": 0, "next": [1, 6]},  # 0 -> +1(up) | -1(up)
+        {"v": 1, "next": [2]},     # +1 up -> +2 up
+        {"v": 2, "next": [3]},     # +2 up -> +3
+        {"v": 3, "next": [4]},     # +3 -> +2 down
+        {"v": 2, "next": [5]},     # +2 down -> +1 down
+        {"v": 1, "next": [0]},     # +1 down -> 0
+        {"v": -1, "next": [7]},    # -1 up -> -2 up
+        {"v": -2, "next": [8]},    # -2 up -> -3
+        {"v": -3, "next": [9]},    # -3 -> -2 down
+        {"v": -2, "next": [10]},   # -2 down -> -1 down
+        {"v": -1, "next": [0]},    # -1 down -> 0
+    ]
+    value_to_nodes: Dict[int, List[int]] = {}
+    for i, node in enumerate(nodes):
+        value_to_nodes.setdefault(int(node["v"]), []).append(i)
 
     allowed: Set[int] = set()
     if not seq:
@@ -74,15 +91,18 @@ def _allowed_values_for_mirror_state(state: Dict[str, Any], choices: Set[int]) -
         if not isinstance(phases, list):
             phases = []
         if not phases and prev is not None:
-            phases = [i for i, v in enumerate(cycle) if v == int(prev)]
+            phases = value_to_nodes.get(int(prev), [])
         for p in phases:
             try:
                 p_int = int(p)
             except Exception:
                 continue
-            nxt = cycle[(p_int + 1) % cycle_len]
-            if nxt in choices:
-                allowed.add(nxt)
+            if not (0 <= p_int < len(nodes)):
+                continue
+            for n_idx in nodes[p_int]["next"]:
+                nxt_val = int(nodes[int(n_idx)]["v"])
+                if nxt_val in choices:
+                    allowed.add(nxt_val)
 
     if prev is not None and prev in allowed:
         allowed.discard(prev)
@@ -96,26 +116,42 @@ def _advance_mirror_state(state: Dict[str, Any], value: int) -> Dict[str, Any]:
     seq = list(state.get("seq") or [])
     phases = state.get("phases")
 
-    cycle = [0, 1, 2, 3, 2, 1, 0, -1, -2, -3, -2, -1]
-    cycle_len = len(cycle)
+    nodes = [
+        {"v": 0, "next": [1, 6]},
+        {"v": 1, "next": [2]},
+        {"v": 2, "next": [3]},
+        {"v": 3, "next": [4]},
+        {"v": 2, "next": [5]},
+        {"v": 1, "next": [0]},
+        {"v": -1, "next": [7]},
+        {"v": -2, "next": [8]},
+        {"v": -3, "next": [9]},
+        {"v": -2, "next": [10]},
+        {"v": -1, "next": [0]},
+    ]
+    value_to_nodes: Dict[int, List[int]] = {}
+    for i, node in enumerate(nodes):
+        value_to_nodes.setdefault(int(node["v"]), []).append(i)
 
     if not isinstance(phases, list):
         phases = []
 
     if not seq:
-        new_phases = [i for i, v in enumerate(cycle) if v == int(value)]
+        new_phases = value_to_nodes.get(int(value), [])
     else:
         if not phases and prev is not None:
-            phases = [i for i, v in enumerate(cycle) if v == int(prev)]
+            phases = value_to_nodes.get(int(prev), [])
         new_phases_set: Set[int] = set()
         for p in phases:
             try:
                 p_int = int(p)
             except Exception:
                 continue
-            n_idx = (p_int + 1) % cycle_len
-            if cycle[n_idx] == int(value):
-                new_phases_set.add(n_idx)
+            if not (0 <= p_int < len(nodes)):
+                continue
+            for n_idx in nodes[p_int]["next"]:
+                if int(nodes[int(n_idx)]["v"]) == int(value):
+                    new_phases_set.add(int(n_idx))
         new_phases = sorted(new_phases_set)
 
     return {
@@ -1107,7 +1143,7 @@ def render_iou_form() -> str:
           </label>
           <label style='display:flex; align-items:center; gap:8px;'>
             <input type='checkbox' name='pattern_mirror_mode' />
-            <span>Ayna örüntü (0, +1,+2,+3,+2,+1, 0, -1,-2,-3,-2,-1, 0...)</span>
+            <span>Ayna örüntü (0, ±1,±2,±3,±2,±1, 0...)</span>
           </label>
         </div>
         <div style='margin-top:12px;'>
