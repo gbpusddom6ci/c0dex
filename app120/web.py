@@ -746,7 +746,7 @@ def render_pattern_panel(
             i += 1
             if i < len(seq):
                 parts.append(", ")
-        label = ", ".join(parts)
+        label = "".join(parts)
         st = _build_state_for_seq(seq)
         opts = _allowed_values_for_state(st, domain, allow_zero_after_start)
         cont = ", ".join(_fmt_off(v) for v in opts) if opts else "-"
