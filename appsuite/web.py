@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import socket
 import threading
 import time
 import re
 from dataclasses import dataclass
 from http import client
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Iterable, List, Tuple
 from urllib.parse import urlsplit
 
@@ -23,6 +24,10 @@ from calendar_md.web import run as run_calendar
 from favicon import try_load_asset
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+try:
+    BACKEND_TIMEOUT_SECONDS = int(os.environ.get("APPSUITE_BACKEND_TIMEOUT_SECONDS", "300") or "300")
+except Exception:
+    BACKEND_TIMEOUT_SECONDS = 300
 
 
 @dataclass(frozen=True)
@@ -185,7 +190,27 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
                 self.end_headers()
                 self.wfile.write(msg)
                 return
-            body = self.rfile.read(content_length) if content_length > 0 else None
+
+            body = None
+            if content_length > 0:
+                class _LimitedReader:
+                    def __init__(self, fp, remaining: int):
+                        self.fp = fp
+                        self.remaining = remaining
+
+                    def read(self, amt: int = 8192) -> bytes:
+                        if self.remaining <= 0:
+                            return b""
+                        if amt is None or amt < 0 or amt > self.remaining:
+                            amt = self.remaining
+                        data = self.fp.read(amt)
+                        if not data:
+                            self.remaining = 0
+                            return b""
+                        self.remaining -= len(data)
+                        return data
+
+                body = _LimitedReader(self.rfile, content_length)
 
             headers = {k: v for k, v in self.headers.items()}
             headers.pop("Accept-Encoding", None)
@@ -194,30 +219,40 @@ def make_handler(backends: List[Backend], landing_bytes: bytes):
             if body is None:
                 headers.pop("Content-Length", None)
             else:
-                headers["Content-Length"] = str(len(body))
+                headers["Content-Length"] = str(content_length)
 
-            conn = client.HTTPConnection(backend.host, backend.port, timeout=15)
+            conn = client.HTTPConnection(backend.host, backend.port, timeout=BACKEND_TIMEOUT_SECONDS)
             try:
                 conn.request(self.command, sub_path, body=body, headers=headers)
                 resp = conn.getresponse()
                 status = resp.status
                 reason = resp.reason
-                resp_body = resp.read()
                 resp_headers = strip_hop_headers(resp.getheaders())
                 content_type = next((v for k, v in resp_headers if k.lower() == "content-type"), "")
-                proxied_body = resp_body
                 if "text/html" in content_type:
+                    resp_body = resp.read()
                     proxied_body = rewrite_html_paths(resp_body, backend.normalize_prefix())
-                self.send_response(status, reason)
-                for header, value in resp_headers:
-                    if header.lower() == "content-length":
-                        continue
-                    self.send_header(header, value)
-                # add our security headers on top of proxied response
-                self._add_security_headers()
-                self.send_header("Content-Length", str(len(proxied_body)))
-                self.end_headers()
-                self.wfile.write(proxied_body)
+                    self.send_response(status, reason)
+                    for header, value in resp_headers:
+                        if header.lower() == "content-length":
+                            continue
+                        self.send_header(header, value)
+                    # add our security headers on top of proxied response
+                    self._add_security_headers()
+                    self.send_header("Content-Length", str(len(proxied_body)))
+                    self.end_headers()
+                    self.wfile.write(proxied_body)
+                else:
+                    self.send_response(status, reason)
+                    for header, value in resp_headers:
+                        self.send_header(header, value)
+                    self._add_security_headers()
+                    self.end_headers()
+                    while True:
+                        chunk = resp.read(65536)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
             finally:
                 conn.close()
 
@@ -278,7 +313,7 @@ def run(
     landing_bytes = build_html(app_links)
 
     handler_cls = make_handler(backends, landing_bytes)
-    server = HTTPServer((host, port), handler_cls)
+    server = ThreadingHTTPServer((host, port), handler_cls)
     print(f"appsuite web: http://{host}:{port}/")
     server.serve_forever()
 

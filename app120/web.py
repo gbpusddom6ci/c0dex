@@ -1,10 +1,15 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import argparse
+import os
+import secrets
+import shutil
+import time
 import html
 import io
 import csv
 import base64
 import json
+import cgi
 from typing import List, Optional, Dict, Any, Type, Set, Tuple
 
 from favicon import render_head_links, try_load_asset
@@ -48,8 +53,162 @@ IOU_TOLERANCE = 0.0
 PATTERN_MAX_PATHS: Optional[int] = None
 PATTERN_BEAM_WIDTH: Optional[int] = None
 
+APP120_STATE_DIR = os.environ.get("APP120_STATE_DIR", "/tmp/app120_state")
+try:
+    APP120_STATE_TTL_SECONDS = int(os.environ.get("APP120_STATE_TTL_SECONDS", str(6 * 3600)) or str(6 * 3600))
+except Exception:
+    APP120_STATE_TTL_SECONDS = 6 * 3600
+
+
+def _safe_state_token(token: str) -> str:
+    tok = (token or "").strip()
+    if not tok or len(tok) > 128:
+        return ""
+    for ch in tok:
+        if not (ch.isalnum() or ch in ("-", "_")):
+            return ""
+    return tok
+
+
+def _ensure_state_dir() -> str:
+    root = APP120_STATE_DIR
+    try:
+        os.makedirs(root, exist_ok=True)
+    except Exception:
+        pass
+    return root
+
+
+def _cleanup_state_dir(now: Optional[float] = None) -> None:
+    root = _ensure_state_dir()
+    ttl = APP120_STATE_TTL_SECONDS
+    if ttl <= 0:
+        return
+    t = time.time() if now is None else now
+    try:
+        for name in os.listdir(root):
+            path = os.path.join(root, name)
+            if not os.path.isdir(path):
+                continue
+            state_path = os.path.join(path, "state.json")
+            try:
+                mtime = os.path.getmtime(state_path) if os.path.exists(state_path) else os.path.getmtime(path)
+            except Exception:
+                continue
+            if t - mtime > ttl:
+                shutil.rmtree(path, ignore_errors=True)
+    except Exception:
+        return
+
+
+def _new_state_token() -> str:
+    return secrets.token_hex(16)
+
+
+def _state_paths(token: str) -> Tuple[str, str, str]:
+    root = _ensure_state_dir()
+    base = os.path.join(root, token)
+    uploads_dir = os.path.join(base, "uploads")
+    state_path = os.path.join(base, "state.json")
+    return base, uploads_dir, state_path
+
+
+def _read_state(token: str) -> Optional[Dict[str, Any]]:
+    tok = _safe_state_token(token)
+    if not tok:
+        return None
+    _cleanup_state_dir()
+    _, _, state_path = _state_paths(tok)
+    try:
+        with open(state_path, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        return None
+
+
+def _write_state(token: str, state: Dict[str, Any]) -> None:
+    tok = _safe_state_token(token)
+    if not tok:
+        return
+    _cleanup_state_dir()
+    base, _, state_path = _state_paths(tok)
+    try:
+        os.makedirs(base, exist_ok=True)
+        tmp_path = state_path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, separators=(",", ":"))
+        os.replace(tmp_path, state_path)
+    except Exception:
+        return
+
+
+def _store_state_uploads(token: str, files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    tok = _safe_state_token(token)
+    if not tok:
+        return []
+    base, uploads_dir, _ = _state_paths(tok)
+    try:
+        os.makedirs(uploads_dir, exist_ok=True)
+    except Exception:
+        return []
+    try:
+        for old_name in os.listdir(uploads_dir):
+            old_path = os.path.join(uploads_dir, old_name)
+            if os.path.isfile(old_path):
+                os.remove(old_path)
+    except Exception:
+        pass
+
+    uploads: List[Dict[str, Any]] = []
+    for idx, entry in enumerate(files):
+        filename = entry.get("filename") or f"uploaded_{idx}.csv"
+        raw = entry.get("data")
+        if isinstance(raw, str):
+            raw_bytes = raw.encode("utf-8", errors="replace")
+        elif isinstance(raw, (bytes, bytearray)):
+            raw_bytes = bytes(raw)
+        else:
+            raw_bytes = b""
+        out_path = os.path.join(uploads_dir, f"file_{idx}.csv")
+        try:
+            with open(out_path, "wb") as f:
+                f.write(raw_bytes)
+        except Exception:
+            continue
+        uploads.append({"filename": str(filename), "path": out_path})
+
+    try:
+        os.makedirs(base, exist_ok=True)
+    except Exception:
+        pass
+    return uploads
+
+
+def _load_state_upload_entries(state: Dict[str, Any]) -> List[Dict[str, Any]]:
+    uploads = state.get("uploads")
+    if not isinstance(uploads, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    for entry in uploads:
+        if not isinstance(entry, dict):
+            continue
+        path = entry.get("path")
+        name = entry.get("filename") or "uploaded.csv"
+        if not isinstance(path, str) or not path:
+            continue
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+        except Exception:
+            continue
+        out.append({"filename": str(name), "data": data})
+    return out
+
+
 def _fmt_off(v: int) -> str:
     return f"+{v}" if v > 0 else str(v)
+
 
 def _sign(v: int) -> int:
     if v > 0:
@@ -363,25 +522,20 @@ def build_chained_pattern_sequences(
                     continue
                 next_states.append(new_state)
                 if beam_width is not None and len(next_states) >= beam_width:
+                    # Basit beam budaması
                     break
             if beam_width is not None and len(next_states) >= beam_width:
                 break
         states = next_states
         if not states:
             break
-    seen: Set[Tuple[int, ...]] = set()
-    display: List[List[int]] = []
-    total_unique = 0
-    for st in states:
-        seq = st.get("seq") or []
-        key = tuple(seq)
-        if key in seen:
-            continue
-        seen.add(key)
-        total_unique += 1
-        if max_paths is None or len(display) < max_paths:
-            display.append(seq)
-    return display, total_unique
+
+    results: List[List[int]] = [
+        st["seq"] for st in states if len(st.get("seq", [])) == len(pattern_groups)
+    ]
+    if max_paths is not None:
+        return results[:max_paths]
+    return results
 
 
 def _find_mirror_chain_highlights(seq: List[int]) -> Set[int]:
@@ -760,7 +914,7 @@ def render_pattern_panel(
         lines.append(f"<div class='pat-line'>{number_html} {label} (devam: {html.escape(cont)}){loss_html}</div>")
     # Son değerlerin özeti (benzersiz, sıralı)
     last_vals = [seq[-1] for seq in patterns if seq]
-    order = { -3:0, -2:1, -1:2, 0:3, 1:4, 2:5, 3:6 }
+    order = {-3: 0, -2: 1, -1: 2, 0: 3, 1: 4, 2: 5, 3: 6}
     unique_last_sorted = []
     seen = set()
     for v in sorted(last_vals, key=lambda x: order.get(x, 99)):
@@ -797,10 +951,10 @@ def _sanitize_csv_filename(name: str, suffix: str) -> str:
         else:
             out = out[:120]
     return out
+
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_FILES = 50
 MAX_FILES_CONVERTER = 100
-
 
 def load_candles_from_text(text: str, candle_cls: Type) -> List:
     sample = text[:4096]
@@ -849,12 +1003,10 @@ def load_candles_from_text(text: str, candle_cls: Type) -> List:
     candles.sort(key=lambda x: x.ts)
     return candles
 
-
 def format_pip(delta: Optional[float]) -> str:
     if delta is None:
         return "-"
     return f"{delta:+.5f}"
-
 
 def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
     head_links = render_head_links("    ")
@@ -917,7 +1069,6 @@ def page(title: str, body: str, active_tab: str = "analyze") -> bytes:
 </html>"""
     return html_doc.encode("utf-8")
 
-
 def render_analyze_index() -> bytes:
     body = """
     <div class='card'>
@@ -974,7 +1125,6 @@ def render_analyze_index() -> bytes:
     """
     return page("app120", body, active_tab="analyze")
 
-
 def render_dc_index() -> bytes:
     body = """
     <div class='card'>
@@ -1002,10 +1152,9 @@ def render_dc_index() -> bytes:
       </form>
     </div>
     <p>Not: app120 sayımında DC'ler her zaman atlanır; bu sayfada tüm DC'ler listelenir.</p>
-    <p><strong>Önemli:</strong> DC: 18:00 her zaman dışlanır; 20:00 yalnız Pazar hariç DC olabilir; Cuma 16:00 DC sayılmaz. IOU: 16:00 ve 18:00 her gün yok; 20:00 tüm günlerde IOU değildir; <strong>Pazar günü IOU yoktur</strong>.</p>
+    <p><strong>Önemli:</strong> DC: 18:00 her zaman dışlanır; 20:00 yalnız Pazar hariç DC olabilir; Cuma 16:00 DC sayılmaz. IOU: 16:00 ve 18:00 her gün yok; 20:00 tüm günlerde IOU olamaz; <strong>Pazar günü IOU yoktur</strong>.</p>
     """
     return page("app120 - DC List", body, active_tab="dc")
-
 
 def render_matrix_index() -> bytes:
     body = """
@@ -1044,7 +1193,6 @@ def render_matrix_index() -> bytes:
     </div>
     """
     return page("app120 - Matrix", body, active_tab="matrix")
-
 
 def render_iov_index() -> bytes:
     body = """
@@ -1088,7 +1236,6 @@ def render_iov_index() -> bytes:
     <p>Limit, mumun OC ve PrevOC değerlerinin mutlak değeri için eşik belirler. Değeri aşan ve zıt işaretli çiftler IOV olarak raporlanır. Aynı anda birden fazla CSV seçebilirsin.</p>
     """
     return page("app120 - IOV", body, active_tab="iov")
-
 
 def render_iou_form() -> str:
     """IOU formunu HTML string olarak döndürür (sonuç sayfasında kullanım için)"""
@@ -1156,11 +1303,9 @@ def render_iou_form() -> str:
     <p><strong>Not:</strong> 16:00 ve 18:00 mumları IOU üretmez; 20:00 mumları tüm günlerde IOU olamaz; <strong>Pazar günü IOU yoktur</strong>.</p>
     """
 
-
 def render_iou_index() -> bytes:
     body = render_iou_form()
     return page("app120 - IOU", body, active_tab="iou")
-
 
 def render_loss_form(
     *,
@@ -1226,11 +1371,9 @@ def render_loss_form(
     </p>
     """
 
-
 def render_loss_index() -> bytes:
     body = render_loss_form()
     return page("app120 - loss", body, active_tab="loss")
-
 
 def render_converter_index() -> bytes:
     body = """
@@ -1248,44 +1391,59 @@ def render_converter_index() -> bytes:
     """
     return page("app120 - Converter", body, active_tab="converter")
 
-
 def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]]:
     ctype = handler.headers.get("Content-Type")
     if not ctype or "multipart/form-data" not in ctype:
         raise ValueError("multipart/form-data bekleniyor")
-    length = int(handler.headers.get("Content-Length", "0") or "0")
-    form = BytesParser(policy=email_default).parsebytes(
-        b"Content-Type: " + ctype.encode("utf-8") + b"\n\n" + handler.rfile.read(length)
+    length = int(handler.headers.get("Content-Length", "0") or 0)
+    environ = {
+        "REQUEST_METHOD": "POST",
+        "CONTENT_TYPE": ctype,
+        "CONTENT_LENGTH": str(length),
+    }
+    fs = cgi.FieldStorage(
+        fp=handler.rfile,
+        headers=handler.headers,
+        environ=environ,
+        keep_blank_values=True,
     )
+
     out: Dict[str, Dict[str, Any]] = {}
-    for part in form.iter_parts():
-        if part.get_content_disposition() != "form-data":
-            continue
-        name = part.get_param("name", header="content-disposition")
+    parts = fs.list or []
+    for part in parts:
+        name = getattr(part, "name", None)
         if not name:
             continue
-        filename = part.get_filename()
-        payload = part.get_payload(decode=True)
+
+        filename = getattr(part, "filename", None)
         if filename:
-            data = payload
-            if data is None:
-                content = part.get_content()
-                data = content.encode("utf-8", errors="replace") if isinstance(content, str) else content
-            entry = {"filename": filename, "data": data or b""}
+            file_obj = getattr(part, "file", None)
+            if file_obj is None:
+                data = b""
+            else:
+                try:
+                    file_obj.seek(0)
+                except Exception:
+                    pass
+                data = file_obj.read() or b""
+                if isinstance(data, str):
+                    data = data.encode("utf-8", errors="replace")
+                try:
+                    file_obj.close()
+                except Exception:
+                    pass
+
+            entry = {"filename": filename, "data": data}
             if name not in out:
                 out[name] = {"files": [entry]}
             else:
                 files = out[name].setdefault("files", [])
                 files.append(entry)
         else:
-            if payload is not None:
-                value = payload.decode("utf-8", errors="replace")
-            else:
-                content = part.get_content()
-                value = content if isinstance(content, str) else content.decode("utf-8", errors="replace")
-            out[name] = {"value": value}
+            value = getattr(part, "value", None)
+            value_s = value if isinstance(value, str) else ("" if value is None else str(value))
+            out[name] = {"value": value_s}
     return out
-
 
 class App120Handler(BaseHTTPRequestHandler):
     server_version = "Candles120/1.0"
@@ -1480,27 +1638,44 @@ class App120Handler(BaseHTTPRequestHandler):
                 pattern_enabled = metric_label == "IOU" and "pattern_mode" in form
                 pattern_mirror_mode = metric_label == "IOU" and "pattern_mirror_mode" in form
                 confirm_iou = metric_label == "IOU" and "confirm_iou" in form
-                
+                 
                 # Önceki sonuçları al (eğer varsa) - sadece IOU için
+                state_token = ""
+                iou_state: Optional[Dict[str, Any]] = None
                 previous_results_html = ""
-                pattern_payload_raw = ""
+                pattern_payload_obj: Any = None
                 pattern_groups_history: List[List[List[int]]] = []
                 pattern_meta_history: List[Dict[str, Any]] = []
                 pattern_allow_zero_after_start = True
                 if metric_label == "IOU":
-                    previous_results_html = form.get("previous_results_html", {}).get("value", "")
-                    if previous_results_html:
-                        try:
-                            previous_results_html = base64.b64decode(previous_results_html.encode("ascii")).decode("utf-8")
-                        except Exception:
-                            previous_results_html = ""
-                    pattern_payload_raw = form.get("previous_pattern_payload", {}).get("value", "")
-                    if pattern_payload_raw:
-                        try:
-                            decoded_payload = base64.b64decode(pattern_payload_raw.encode("ascii"))
-                            payload_obj = json.loads(decoded_payload.decode("utf-8"))
-                        except Exception:
-                            payload_obj = None
+                    state_token = (form.get("state_token", {}).get("value") or "").strip()
+                    iou_state = _read_state(state_token) if state_token else None
+                    if iou_state:
+                        prev_val = iou_state.get("previous_results_html")
+                        if isinstance(prev_val, str):
+                            previous_results_html = prev_val
+                        pattern_payload_obj = iou_state.get("pattern_payload")
+                    else:
+                        legacy_prev = form.get("previous_results_html", {}).get("value", "")
+                        if legacy_prev:
+                            try:
+                                previous_results_html = base64.b64decode(legacy_prev.encode("ascii")).decode("utf-8")
+                            except Exception:
+                                previous_results_html = ""
+                        legacy_payload = form.get("previous_pattern_payload", {}).get("value", "")
+                        if legacy_payload:
+                            try:
+                                decoded_payload = base64.b64decode(legacy_payload.encode("ascii"))
+                                pattern_payload_obj = json.loads(decoded_payload.decode("utf-8"))
+                            except Exception:
+                                pattern_payload_obj = None
+                        if (previous_results_html or pattern_payload_obj is not None) and not state_token:
+                            state_token = _new_state_token()
+                            iou_state = {"previous_results_html": previous_results_html, "pattern_payload": pattern_payload_obj}
+                            _write_state(state_token, iou_state)
+
+                    payload_obj = pattern_payload_obj
+                    if payload_obj is not None:
                         if isinstance(payload_obj, dict):
                             pattern_allow_zero_after_start = bool(payload_obj.get("allow_zero_after_start", True))
                             groups_data = payload_obj.get("groups", [])
@@ -1607,17 +1782,24 @@ class App120Handler(BaseHTTPRequestHandler):
 
                 # İlk adım: Joker seçimi ekranı (yalnız IOU için)
                 if metric_label == "IOU" and not confirm_iou and files:
+                    if not state_token:
+                        state_token = _new_state_token()
+                    if iou_state is None:
+                        iou_state = {}
+                    uploads = _store_state_uploads(state_token, files)
+                    iou_state["uploads"] = uploads
+                    iou_state["previous_results_html"] = previous_results_html
+                    iou_state["pattern_payload"] = {
+                        "groups": pattern_groups_history,
+                        "allow_zero_after_start": pattern_allow_zero_after_start,
+                        "mirror_mode": pattern_mirror_mode,
+                        "meta": pattern_meta_history,
+                    }
+                    _write_state(state_token, iou_state)
                     idx = 0
-                    hidden_fields: List[str] = []
                     file_rows: List[str] = []
-                    for entry in files:
+                    for entry in uploads:
                         name = entry.get("filename") or f"uploaded_{idx}.csv"
-                        raw_bytes = entry.get("data")
-                        if isinstance(raw_bytes, str):
-                            raw_bytes = raw_bytes.encode("utf-8", errors="replace")
-                        b64 = base64.b64encode(raw_bytes or b"").decode("ascii")
-                        hidden_fields.append(f"<input type='hidden' name='csv_b64_{idx}' value='{html.escape(b64)}'>")
-                        hidden_fields.append(f"<input type='hidden' name='csv_name_{idx}' value='{html.escape(name)}'>")
                         file_rows.append(
                             f"<tr><td>{idx+1}</td><td>{html.escape(name)}</td>"
                             f"<td><label style='display:flex;gap:8px;align-items:center;'><input type='checkbox' name='joker_{idx}' /> Joker</label></td></tr>"
@@ -1630,6 +1812,7 @@ class App120Handler(BaseHTTPRequestHandler):
                     sequence_val = (form.get("sequence", {}).get("value") or "S1").strip() or "S1"
                     tz_val = (form.get("input_tz", {}).get("value") or "UTC-4").strip()
                     preserved = [
+                        f"<input type='hidden' name='state_token' value='{html.escape(state_token)}'>",
                         f"<input type='hidden' name='sequence' value='{html.escape(sequence_val)}'>",
                         f"<input type='hidden' name='input_tz' value='{html.escape(tz_val)}'>",
                         f"<input type='hidden' name='limit' value='{html.escape(str(limit_val))}'>",
@@ -1640,15 +1823,6 @@ class App120Handler(BaseHTTPRequestHandler):
                         "<input type='hidden' name='confirm_iou' value='1'>",
                     ]
                     
-                    # Önceki sonuçları da koru (eğer varsa)
-                    if previous_results_html:
-                        # previous_results_html zaten decode edilmiş durumda
-                        encoded = base64.b64encode(previous_results_html.encode("utf-8")).decode("ascii")
-                        preserved.append(f"<input type='hidden' name='previous_results_html' value='{html.escape(encoded)}'>")
-                    preserved.append(
-                        f"<input type='hidden' name='previous_pattern_payload' value='{html.escape(pattern_payload_raw)}'>"
-                    )
-
                     table = (
                         "<table><thead><tr><th>#</th><th>Dosya</th><th>Joker</th></tr></thead>"
                         f"<tbody>{''.join(file_rows)}</tbody></table>"
@@ -1657,7 +1831,7 @@ class App120Handler(BaseHTTPRequestHandler):
                     # Önceki sonuçları da göster (eğer varsa)
                     previous_section = ""
                     if previous_results_html:
-                        # previous_results_html zaten body_without_form'dan geliyor, formlar yok
+                        # previous_results_html zaten decode edilmiş durumda
                         previous_section = (
                             "<div style='margin-bottom:32px; padding-bottom:24px; border-bottom:2px solid #ddd;'>"
                             "<h3 style='color:#888; margin-bottom:16px;'>Önceki Analizler</h3>"
@@ -1672,7 +1846,7 @@ class App120Handler(BaseHTTPRequestHandler):
                         "<div>Analize başlamadan önce 'Joker' dosyaları seç. Joker dosyalar XYZ kümesinde tüm offsetleri (-3..+3) içerir.</div>"
                         f"<form method='post' action='/iou' enctype='multipart/form-data'>"
                         + table
-                        + "".join(hidden_fields + preserved)
+                        + "".join(preserved)
                         + "<div style='margin-top:12px;'><button type='submit'>Analizi Başlat</button></div>"
                         + "</form>"
                         + "</div>"
@@ -1684,7 +1858,10 @@ class App120Handler(BaseHTTPRequestHandler):
                     self.wfile.write(page("app120 IOU - Joker Seçimi", body, active_tab="iou"))
                     return
 
-                effective_entries = b64_entries if b64_entries and metric_label == "IOU" else files
+                if metric_label == "IOU" and confirm_iou and iou_state:
+                    effective_entries = _load_state_upload_entries(iou_state)
+                else:
+                    effective_entries = b64_entries if b64_entries and metric_label == "IOU" else files
                 if not effective_entries:
                     raise ValueError("CSV dosyası bulunamadı")
                 joker_indices: Set[int] = set()
@@ -1851,11 +2028,11 @@ class App120Handler(BaseHTTPRequestHandler):
                             f"<div class='card'>"
                             f"<h3>{html.escape(filename)}</h3>"
                             f"<div><strong>Data:</strong> {len(candles)} candles</div>"
-                            f"<div><strong>Zaman Dilimi:</strong> 120m</div>"
                             f"<div><strong>Range:</strong> {html.escape(candles[0].ts.strftime('%Y-%m-%d %H:%M:%S'))} -> {html.escape(candles[-1].ts.strftime('%Y-%m-%d %H:%M:%S'))}</div>"
                             f"<div><strong>TZ:</strong> {html.escape(tz_label)}</div>"
                             f"<div><strong>Sequence:</strong> {html.escape(report.sequence)}</div>"
                             f"<div><strong>Limit:</strong> {report.limit:.5f}</div>"
+                            "<div><strong>Tolerans:</strong> 0</div>"
                             f"<div><strong>Base(18:00):</strong> idx={report.base_idx} status={html.escape(report.base_status)} ts={html.escape(report.base_ts.strftime('%Y-%m-%d %H:%M:%S')) if report.base_ts else '-'} </div>"
                             f"<div><strong>Offset durumları:</strong> {html.escape(', '.join(offset_statuses)) if offset_statuses else '-'} </div>"
                             f"<div><strong>Offset {metric_label} sayıları:</strong> {html.escape(', '.join(offset_counts)) if offset_counts else '-'} </div>"
@@ -1955,20 +2132,18 @@ class App120Handler(BaseHTTPRequestHandler):
                     else:
                         body_without_form = result_section
                     
-                    # Sonuçların altına tekrar IOU formunu ekle (önceki sonuçları da hidden field olarak taşı)
-                    # Önce body_without_form'u encode edip sakla (form eklenmeden önceki hali)
-                    body_encoded = base64.b64encode(body_without_form.encode("utf-8")).decode("ascii")
-                    pattern_payload_encoded = base64.b64encode(
-                        json.dumps(
-                            {
-                                "groups": pattern_groups_history,
-                                "allow_zero_after_start": pattern_allow_zero_after_start,
-                                "mirror_mode": pattern_mirror_mode,
-                                "meta": pattern_meta_history,
-                            },
-                            separators=(",", ":"),
-                        ).encode("utf-8")
-                    ).decode("ascii")
+                    if not state_token:
+                        state_token = _new_state_token()
+                    if iou_state is None:
+                        iou_state = {}
+                    iou_state["previous_results_html"] = body_without_form
+                    iou_state["pattern_payload"] = {
+                        "groups": pattern_groups_history,
+                        "allow_zero_after_start": pattern_allow_zero_after_start,
+                        "mirror_mode": pattern_mirror_mode,
+                        "meta": pattern_meta_history,
+                    }
+                    _write_state(state_token, iou_state)
                     
                     form_html = render_iou_form()
                     # Form içindeki form tag'ini kaldırıp sadece içeriği al
@@ -1979,8 +2154,7 @@ class App120Handler(BaseHTTPRequestHandler):
                         "<h2 style='margin-top:24px;'>Yeni Analiz</h2>"
                         "<div class='card'>"
                         "<form method='post' action='/iou' enctype='multipart/form-data'>"
-                        f"<input type='hidden' name='previous_results_html' value='{body_encoded}'>"
-                        f"<input type='hidden' name='previous_pattern_payload' value='{html.escape(pattern_payload_encoded)}'>"
+                        f"<input type='hidden' name='state_token' value='{html.escape(state_token)}'>"
                         + form_content +
                         "</form>"
                         "</div>"
