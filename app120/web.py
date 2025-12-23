@@ -799,6 +799,7 @@ def _sanitize_csv_filename(name: str, suffix: str) -> str:
     return out
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 MAX_FILES = 50
+MAX_FILES_CONVERTER = 100
 
 
 def load_candles_from_text(text: str, candle_cls: Type) -> List:
@@ -1343,12 +1344,13 @@ class App120Handler(BaseHTTPRequestHandler):
             files = [entry for entry in file_field.get("files", []) if entry.get("data") is not None]
             if not files and self.path != "/iou":
                 raise ValueError("CSV dosyası bulunamadı")
-            if len(files) > MAX_FILES:
+            max_files = MAX_FILES_CONVERTER if self.path == "/converter" else MAX_FILES
+            if len(files) > max_files:
                 self.send_response(413)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
                 _add_security_headers(self)
                 self.end_headers()
-                self.wfile.write(b"Too many files (max 50).")
+                self.wfile.write(f"Too many files (max {max_files}).".encode("utf-8"))
                 return
 
             def decode_entry(entry: Dict[str, Any]) -> str:
