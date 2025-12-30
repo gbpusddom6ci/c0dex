@@ -58,6 +58,7 @@ try:
     APP120_STATE_TTL_SECONDS = int(os.environ.get("APP120_STATE_TTL_SECONDS", str(6 * 3600)) or str(6 * 3600))
 except Exception:
     APP120_STATE_TTL_SECONDS = 6 * 3600
+APP120_STATE_COOKIE = "app120_iou_state"
 
 
 def _safe_state_token(token: str) -> str:
@@ -68,6 +69,32 @@ def _safe_state_token(token: str) -> str:
         if not (ch.isalnum() or ch in ("-", "_")):
             return ""
     return tok
+
+
+def _build_state_cookie(token: str) -> str:
+    tok = _safe_state_token(token)
+    if not tok:
+        return ""
+    parts = [
+        f"{APP120_STATE_COOKIE}={tok}",
+        "Path=/",
+        "SameSite=Lax",
+        "HttpOnly",
+    ]
+    if APP120_STATE_TTL_SECONDS > 0:
+        parts.append(f"Max-Age={APP120_STATE_TTL_SECONDS}")
+    return "; ".join(parts)
+
+
+def _read_state_token_from_cookie(handler: BaseHTTPRequestHandler) -> str:
+    raw = handler.headers.get("Cookie") or ""
+    for part in raw.split(";"):
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        if key.strip() == APP120_STATE_COOKIE:
+            return _safe_state_token(value.strip())
+    return ""
 
 
 def _ensure_state_dir() -> str:
@@ -529,13 +556,19 @@ def build_chained_pattern_sequences(
         states = next_states
         if not states:
             break
-
-    results: List[List[int]] = [
-        st["seq"] for st in states if len(st.get("seq", [])) == len(pattern_groups)
-    ]
-    if max_paths is not None:
-        return results[:max_paths]
-    return results
+    seen: Set[Tuple[int, ...]] = set()
+    display: List[List[int]] = []
+    total_unique = 0
+    for st in states:
+        seq = st.get("seq") or []
+        key = tuple(seq)
+        if key in seen:
+            continue
+        seen.add(key)
+        total_unique += 1
+        if max_paths is None or len(display) < max_paths:
+            display.append(seq)
+    return display, total_unique
 
 
 def _find_mirror_chain_highlights(seq: List[int]) -> Set[int]:
@@ -1303,6 +1336,21 @@ def render_iou_form() -> str:
     <p><strong>Not:</strong> 16:00 ve 18:00 mumları IOU üretmez; 20:00 mumları tüm günlerde IOU olamaz; <strong>Pazar günü IOU yoktur</strong>.</p>
     """
 
+def _render_iou_followup_form(state_token: str) -> str:
+    form_html = render_iou_form()
+    form_content = form_html.replace("<form method='post' action='/iou' enctype='multipart/form-data'>", "").replace("</form>", "").strip()
+    token_input = f"<input type='hidden' name='state_token' value='{html.escape(state_token)}'>" if state_token else ""
+    return (
+        "<hr style='margin:32px 0; border:none; border-top:2px solid #ddd;'>"
+        "<h2 style='margin-top:24px;'>Yeni Analiz</h2>"
+        "<div class='card'>"
+        "<form method='post' action='/iou' enctype='multipart/form-data'>"
+        + token_input
+        + form_content +
+        "</form>"
+        "</div>"
+    )
+
 def render_iou_index() -> bytes:
     body = render_iou_form()
     return page("app120 - IOU", body, active_tab="iou")
@@ -1468,7 +1516,15 @@ class App120Handler(BaseHTTPRequestHandler):
         elif self.path == "/iov":
             body = render_iov_index()
         elif self.path == "/iou":
-            body = render_iou_index()
+            state_token = _read_state_token_from_cookie(self)
+            body_html = render_iou_form()
+            if state_token:
+                iou_state = _read_state(state_token)
+                if iou_state:
+                    previous_results_html = iou_state.get("previous_results_html")
+                    if isinstance(previous_results_html, str) and previous_results_html:
+                        body_html = previous_results_html + _render_iou_followup_form(state_token)
+            body = page("app120 - IOU", body_html, active_tab="iou")
         elif self.path == "/loss":
             body = render_loss_index()
         elif self.path == "/converter":
@@ -1853,6 +1909,9 @@ class App120Handler(BaseHTTPRequestHandler):
                     )
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
+                    cookie_header = _build_state_cookie(state_token)
+                    if cookie_header:
+                        self.send_header("Set-Cookie", cookie_header)
                     _add_security_headers(self)
                     self.end_headers()
                     self.wfile.write(page("app120 IOU - Joker Seçimi", body, active_tab="iou"))
@@ -2145,20 +2204,7 @@ class App120Handler(BaseHTTPRequestHandler):
                     }
                     _write_state(state_token, iou_state)
                     
-                    form_html = render_iou_form()
-                    # Form içindeki form tag'ini kaldırıp sadece içeriği al
-                    form_content = form_html.replace("<form method='post' action='/iou' enctype='multipart/form-data'>", "").replace("</form>", "").strip()
-                    
-                    form_section = (
-                        "<hr style='margin:32px 0; border:none; border-top:2px solid #ddd;'>"
-                        "<h2 style='margin-top:24px;'>Yeni Analiz</h2>"
-                        "<div class='card'>"
-                        "<form method='post' action='/iou' enctype='multipart/form-data'>"
-                        f"<input type='hidden' name='state_token' value='{html.escape(state_token)}'>"
-                        + form_content +
-                        "</form>"
-                        "</div>"
-                    )
+                    form_section = _render_iou_followup_form(state_token)
                     
                     # Final body: önceki sonuçlar + yeni sonuç + form
                     body = body_without_form + form_section
@@ -2170,6 +2216,10 @@ class App120Handler(BaseHTTPRequestHandler):
                 title = f"app120 {metric_label}"
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                if metric_label == "IOU":
+                    cookie_header = _build_state_cookie(state_token)
+                    if cookie_header:
+                        self.send_header("Set-Cookie", cookie_header)
                 _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page(title, body, active_tab=tab_key))
