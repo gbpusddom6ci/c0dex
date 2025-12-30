@@ -2162,7 +2162,7 @@ class App120Handler(BaseHTTPRequestHandler):
                     }
                     _write_state(state_token, iou_state)
                     self.send_response(303)
-                    self.send_header("Location", f"/iou?state={state_token}")
+                    self.send_header("Location", f"?state={state_token}")
                     _add_security_headers(self)
                     self.end_headers()
                     return
