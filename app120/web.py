@@ -9,7 +9,6 @@ import io
 import csv
 import base64
 import json
-import cgi
 from typing import List, Optional, Dict, Any, Type, Set, Tuple
 from urllib.parse import urlsplit, parse_qs
 
@@ -1417,54 +1416,37 @@ def parse_multipart(handler: BaseHTTPRequestHandler) -> Dict[str, Dict[str, Any]
     ctype = handler.headers.get("Content-Type")
     if not ctype or "multipart/form-data" not in ctype:
         raise ValueError("multipart/form-data bekleniyor")
-    length = int(handler.headers.get("Content-Length", "0") or 0)
-    environ = {
-        "REQUEST_METHOD": "POST",
-        "CONTENT_TYPE": ctype,
-        "CONTENT_LENGTH": str(length),
-    }
-    fs = cgi.FieldStorage(
-        fp=handler.rfile,
-        headers=handler.headers,
-        environ=environ,
-        keep_blank_values=True,
+    length = int(handler.headers.get("Content-Length", "0") or "0")
+    form = BytesParser(policy=email_default).parsebytes(
+        b"Content-Type: " + ctype.encode("utf-8") + b"\n\n" + handler.rfile.read(length)
     )
-
     out: Dict[str, Dict[str, Any]] = {}
-    parts = fs.list or []
-    for part in parts:
-        name = getattr(part, "name", None)
+    for part in form.iter_parts():
+        if part.get_content_disposition() != "form-data":
+            continue
+        name = part.get_param("name", header="content-disposition")
         if not name:
             continue
-
-        filename = getattr(part, "filename", None)
+        filename = part.get_filename()
+        payload = part.get_payload(decode=True)
         if filename:
-            file_obj = getattr(part, "file", None)
-            if file_obj is None:
-                data = b""
-            else:
-                try:
-                    file_obj.seek(0)
-                except Exception:
-                    pass
-                data = file_obj.read() or b""
-                if isinstance(data, str):
-                    data = data.encode("utf-8", errors="replace")
-                try:
-                    file_obj.close()
-                except Exception:
-                    pass
-
-            entry = {"filename": filename, "data": data}
-            if name not in out:
-                out[name] = {"files": [entry]}
-            else:
-                files = out[name].setdefault("files", [])
-                files.append(entry)
+            data = payload
+            if data is None:
+                content = part.get_content()
+                data = content.encode("utf-8", errors="replace") if isinstance(content, str) else content
+            entry = {"filename": filename, "data": data or b""}
+            container = out.setdefault(name, {"files": []})
+            container.setdefault("files", []).append(entry)
+            if "data" not in container:
+                container["data"] = entry["data"]
+                container["filename"] = entry["filename"]
         else:
-            value = getattr(part, "value", None)
-            value_s = value if isinstance(value, str) else ("" if value is None else str(value))
-            out[name] = {"value": value_s}
+            if payload is not None:
+                value = payload.decode("utf-8", errors="replace")
+            else:
+                content = part.get_content()
+                value = content if isinstance(content, str) else content.decode("utf-8", errors="replace")
+            out[name] = {"value": value}
     return out
 
 class App120Handler(BaseHTTPRequestHandler):
