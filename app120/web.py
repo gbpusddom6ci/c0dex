@@ -1695,11 +1695,15 @@ class App120Handler(BaseHTTPRequestHandler):
                 pattern_meta_history: List[Dict[str, Any]] = []
                 pattern_allow_zero_after_start = True
                 attempt_id = ""
+                replace_last_attempt = False
                 if metric_label == "IOU":
                     state_token = (form.get("state_token", {}).get("value") or "").strip()
                     attempt_id = (form.get("attempt_id", {}).get("value") or "").strip()
                     iou_state = _read_state(state_token) if state_token else None
                     if iou_state:
+                        last_attempt_id = str(iou_state.get("last_attempt_id") or "")
+                        if attempt_id and last_attempt_id and attempt_id == last_attempt_id:
+                            replace_last_attempt = True
                         prev_val = iou_state.get("previous_results_html")
                         if isinstance(prev_val, str):
                             previous_results_html = prev_val
@@ -1806,6 +1810,10 @@ class App120Handler(BaseHTTPRequestHandler):
                         if len(pattern_meta_history) < len(pattern_groups_history):
                             pattern_meta_history.extend({} for _ in range(len(pattern_groups_history) - len(pattern_meta_history)))
                         elif len(pattern_meta_history) > len(pattern_groups_history):
+                            pattern_meta_history = pattern_meta_history[:len(pattern_groups_history)]
+                    if replace_last_attempt and pattern_groups_history:
+                        pattern_groups_history = pattern_groups_history[:-1]
+                        if pattern_meta_history:
                             pattern_meta_history = pattern_meta_history[:len(pattern_groups_history)]
                 
                 tolerance_val = 0.0
