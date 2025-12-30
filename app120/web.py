@@ -218,6 +218,36 @@ def _sign(v: int) -> int:
     return 0
 
 
+def _remove_result_section(html_doc: str, result_id: str) -> str:
+    if not html_doc or not result_id:
+        return html_doc
+    marker = f"id='result_{result_id}'"
+    idx = html_doc.rfind(marker)
+    if idx == -1:
+        return html_doc
+    start = html_doc.rfind("<div", 0, idx)
+    if start == -1:
+        return html_doc
+    i = start
+    depth = 0
+    while i < len(html_doc):
+        if html_doc.startswith("<div", i):
+            depth += 1
+            i = html_doc.find(">", i)
+            if i == -1:
+                return html_doc
+            i += 1
+            continue
+        if html_doc.startswith("</div>", i):
+            depth -= 1
+            i += len("</div>")
+            if depth == 0:
+                return html_doc[:start] + html_doc[i:]
+            continue
+        i += 1
+    return html_doc
+
+
 def _allowed_values_for_mirror_state(state: Dict[str, Any], choices: Set[int]) -> List[int]:
     prev = state.get("prev")
     seq = state.get("seq") or []
@@ -1664,8 +1694,10 @@ class App120Handler(BaseHTTPRequestHandler):
                 pattern_groups_history: List[List[List[int]]] = []
                 pattern_meta_history: List[Dict[str, Any]] = []
                 pattern_allow_zero_after_start = True
+                attempt_id = ""
                 if metric_label == "IOU":
                     state_token = (form.get("state_token", {}).get("value") or "").strip()
+                    attempt_id = (form.get("attempt_id", {}).get("value") or "").strip()
                     iou_state = _read_state(state_token) if state_token else None
                     if iou_state:
                         prev_val = iou_state.get("previous_results_html")
@@ -1828,11 +1860,13 @@ class App120Handler(BaseHTTPRequestHandler):
 
                     sequence_val = (form.get("sequence", {}).get("value") or "S1").strip() or "S1"
                     tz_val = (form.get("input_tz", {}).get("value") or "UTC-4").strip()
+                    attempt_id = secrets.token_hex(8)
                     preserved = [
                         f"<input type='hidden' name='state_token' value='{html.escape(state_token)}'>",
                         f"<input type='hidden' name='sequence' value='{html.escape(sequence_val)}'>",
                         f"<input type='hidden' name='input_tz' value='{html.escape(tz_val)}'>",
                         f"<input type='hidden' name='limit' value='{html.escape(str(limit_val))}'>",
+                        f"<input type='hidden' name='attempt_id' value='{html.escape(attempt_id)}'>",
                         _hidden_bool("xyz_mode", xyz_enabled),
                         _hidden_bool("xyz_summary", summary_mode),
                         _hidden_bool("pattern_mode", pattern_enabled),
@@ -2144,6 +2178,15 @@ class App120Handler(BaseHTTPRequestHandler):
                     )
                     
                     # Önceki sonuçları ve yeni sonucu birleştir (ilk analiz üstte kalsın)
+                    last_result_id = ""
+                    replace_last = False
+                    if iou_state:
+                        last_result_id = str(iou_state.get("last_result_id") or "")
+                        last_attempt_id = str(iou_state.get("last_attempt_id") or "")
+                        if attempt_id and last_attempt_id and attempt_id == last_attempt_id:
+                            replace_last = True
+                    if replace_last and previous_results_html and last_result_id:
+                        previous_results_html = _remove_result_section(previous_results_html, last_result_id)
                     if previous_results_html:
                         body_without_form = previous_results_html + result_section
                     else:
@@ -2160,6 +2203,9 @@ class App120Handler(BaseHTTPRequestHandler):
                         "mirror_mode": pattern_mirror_mode,
                         "meta": pattern_meta_history,
                     }
+                    iou_state["last_result_id"] = result_id
+                    if attempt_id:
+                        iou_state["last_attempt_id"] = attempt_id
                     _write_state(state_token, iou_state)
                     self.send_response(303)
                     self.send_header("Location", f"?state={state_token}")
