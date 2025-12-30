@@ -11,6 +11,7 @@ import base64
 import json
 import cgi
 from typing import List, Optional, Dict, Any, Type, Set, Tuple
+from urllib.parse import urlsplit, parse_qs
 
 from favicon import render_head_links, try_load_asset
 
@@ -58,7 +59,6 @@ try:
     APP120_STATE_TTL_SECONDS = int(os.environ.get("APP120_STATE_TTL_SECONDS", str(6 * 3600)) or str(6 * 3600))
 except Exception:
     APP120_STATE_TTL_SECONDS = 6 * 3600
-APP120_STATE_COOKIE = "app120_iou_state"
 
 
 def _safe_state_token(token: str) -> str:
@@ -69,32 +69,6 @@ def _safe_state_token(token: str) -> str:
         if not (ch.isalnum() or ch in ("-", "_")):
             return ""
     return tok
-
-
-def _build_state_cookie(token: str) -> str:
-    tok = _safe_state_token(token)
-    if not tok:
-        return ""
-    parts = [
-        f"{APP120_STATE_COOKIE}={tok}",
-        "Path=/",
-        "SameSite=Lax",
-        "HttpOnly",
-    ]
-    if APP120_STATE_TTL_SECONDS > 0:
-        parts.append(f"Max-Age={APP120_STATE_TTL_SECONDS}")
-    return "; ".join(parts)
-
-
-def _read_state_token_from_cookie(handler: BaseHTTPRequestHandler) -> str:
-    raw = handler.headers.get("Cookie") or ""
-    for part in raw.split(";"):
-        if "=" not in part:
-            continue
-        key, value = part.split("=", 1)
-        if key.strip() == APP120_STATE_COOKIE:
-            return _safe_state_token(value.strip())
-    return ""
 
 
 def _ensure_state_dir() -> str:
@@ -1497,7 +1471,10 @@ class App120Handler(BaseHTTPRequestHandler):
     server_version = "Candles120/1.0"
     sys_version = ""
     def do_GET(self):
-        asset = try_load_asset(self.path)
+        parsed = urlsplit(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
+        asset = try_load_asset(path)
         if asset:
             payload, content_type = asset
             self.send_response(200)
@@ -1507,16 +1484,18 @@ class App120Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(payload)
             return
-        if self.path == "/":
+        if path == "/":
             body = render_analyze_index()
-        elif self.path == "/dc":
+        elif path == "/dc":
             body = render_dc_index()
-        elif self.path == "/matrix":
+        elif path == "/matrix":
             body = render_matrix_index()
-        elif self.path == "/iov":
+        elif path == "/iov":
             body = render_iov_index()
-        elif self.path == "/iou":
-            state_token = _read_state_token_from_cookie(self)
+        elif path == "/iou":
+            state_token = ""
+            if "state" in query:
+                state_token = _safe_state_token(query.get("state", [""])[0])
             body_html = render_iou_form()
             if state_token:
                 iou_state = _read_state(state_token)
@@ -1525,9 +1504,9 @@ class App120Handler(BaseHTTPRequestHandler):
                     if isinstance(previous_results_html, str) and previous_results_html:
                         body_html = previous_results_html + _render_iou_followup_form(state_token)
             body = page("app120 - IOU", body_html, active_tab="iou")
-        elif self.path == "/loss":
+        elif path == "/loss":
             body = render_loss_index()
-        elif self.path == "/converter":
+        elif path == "/converter":
             body = render_converter_index()
         else:
             self.send_response(404)
@@ -1909,9 +1888,6 @@ class App120Handler(BaseHTTPRequestHandler):
                     )
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
-                    cookie_header = _build_state_cookie(state_token)
-                    if cookie_header:
-                        self.send_header("Set-Cookie", cookie_header)
                     _add_security_headers(self)
                     self.end_headers()
                     self.wfile.write(page("app120 IOU - Joker Seçimi", body, active_tab="iou"))
@@ -2203,11 +2179,11 @@ class App120Handler(BaseHTTPRequestHandler):
                         "meta": pattern_meta_history,
                     }
                     _write_state(state_token, iou_state)
-                    
-                    form_section = _render_iou_followup_form(state_token)
-                    
-                    # Final body: önceki sonuçlar + yeni sonuç + form
-                    body = body_without_form + form_section
+                    self.send_response(303)
+                    self.send_header("Location", f"/iou?state={state_token}")
+                    _add_security_headers(self)
+                    self.end_headers()
+                    return
                 else:
                     # IOV için normal davranış
                     body = current_result
@@ -2216,10 +2192,6 @@ class App120Handler(BaseHTTPRequestHandler):
                 title = f"app120 {metric_label}"
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
-                if metric_label == "IOU":
-                    cookie_header = _build_state_cookie(state_token)
-                    if cookie_header:
-                        self.send_header("Set-Cookie", cookie_header)
                 _add_security_headers(self)
                 self.end_headers()
                 self.wfile.write(page(title, body, active_tab=tab_key))
